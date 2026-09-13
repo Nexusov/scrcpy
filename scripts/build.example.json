@@ -1,0 +1,10 @@
+{
+  "compiler": "gcc",
+  "archiver": "ar",
+  "windres": "windres",
+  "pkgConfig": "pkg-config",
+  "meson": "meson",
+  "ninja": "ninja",
+  "pkgConfigDirectories": [],
+  "compilerBinDirectory": ""
+}

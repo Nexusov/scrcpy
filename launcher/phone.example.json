@@ -1,0 +1,4 @@
+{
+  "UsbSerial": "YOUR_USB_SERIAL",
+  "WirelessService": "adb-YOUR_USB_SERIAL-PAIRING_ID._adb-tls-connect._tcp"
+}

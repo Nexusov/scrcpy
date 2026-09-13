@@ -1,0 +1,15 @@
+# Local build tools, dependency downloads and generated binaries.
+/work/
+/.build/
+/dist/
+/outputs/
+/scripts/build.local.json
+/finish-cleanup.cmd
+/scripts/finalize-repository.ps1
+
+# Device-specific settings and local diagnostics.
+phone.json
+*.log
+*.pid
+*.lnk
+__pycache__/
