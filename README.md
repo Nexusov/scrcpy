@@ -15,7 +15,7 @@ screen mirroring in the same window when switching from USB to Wi-Fi.
 Closing the window stops reconnection attempts. Switching back from Wi-Fi to USB
 requires restarting the application.
 
-This is an independent modification, not an official Genymobile release.
+This is an independent modification, not an official [Genymobile](https://github.com/genymobile) release.
 Upstream copyright notices and licensing are preserved.
 
 ## Getting started
