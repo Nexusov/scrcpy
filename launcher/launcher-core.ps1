@@ -171,7 +171,7 @@ function Get-AdbServices {
     $result = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('mdns', 'services') -TimeoutMilliseconds $discoveryTimeoutMilliseconds
 
     if ($result.ExitCode -ne 0) {
-        throw 'Wireless discovery failed. Check that both devices use the same network.'
+        throw 'Wireless discovery failed. Make sure Wireless debugging is enabled and your phone and PC are on the same network.'
     }
 
     foreach ($line in ($result.Output -split '\r?\n')) {
@@ -253,7 +253,7 @@ function Complete-WirelessPairing {
         }
 
         if ($matchingServices.Count -ne 1) {
-            throw 'Enter the IP address and pairing port from the phone pairing-code screen.'
+            throw 'Could not identify a single pairing device. Make sure Wireless debugging is enabled, keep the pairing-code dialog open, and check that your phone and PC are on the same network. If needed, enter the IP address and pairing port shown in that dialog.'
         }
 
         $Endpoint = $matchingServices[0].Endpoint
@@ -277,7 +277,7 @@ function Complete-WirelessPairing {
     $pairingSucceeded = $result.ExitCode -eq 0 -and $result.Output -match 'Successfully paired'
 
     if (-not $pairingSucceeded) {
-        throw 'Pairing failed. Keep the pairing-code screen open and try its current code and pairing port.'
+        throw 'Pairing failed. Make sure Wireless debugging is enabled, keep the pairing-code dialog open, and enter the current code and pairing port.'
     }
 
     $discoveryAttempts = 3
@@ -296,7 +296,7 @@ function Complete-WirelessPairing {
         } catch {
 
             if (-not $ConnectionEndpoint) {
-                throw 'Pairing succeeded, but discovery failed. Enter the connection IP:port from the main Wireless debugging screen and try again with a new pairing code.'
+                throw 'Pairing succeeded, but discovery failed. Make sure Wireless debugging is still enabled and both devices are on the same network. Enter Connection IP:port from the main Wireless debugging screen and retry with a fresh pairing code.'
             }
         }
 
@@ -312,7 +312,7 @@ function Complete-WirelessPairing {
     }
 
     if (-not $wirelessServices.Count) {
-        throw 'Pairing completed, but the phone was not discovered over Wi-Fi. Enter Connection IP:port from the main Wireless debugging screen, then retry with a fresh pairing code. Settings were not changed.'
+        throw 'Pairing completed, but the phone was not discovered over Wi-Fi. Make sure Wireless debugging is enabled and both devices are on the same network. If needed, enter Connection IP:port from the main Wireless debugging screen and retry with a fresh pairing code. Settings were not changed.'
     }
 
     foreach ($service in $wirelessServices) {
@@ -349,5 +349,5 @@ function Complete-WirelessPairing {
         }
     }
 
-    throw 'The Wi-Fi device identity could not be verified. Check the phone and connection address. Settings were not changed.'
+    throw 'The Wi-Fi device identity could not be verified. Make sure Wireless debugging is enabled, both devices are on the same network, and the connection address belongs to your phone. Settings were not changed.'
 }
