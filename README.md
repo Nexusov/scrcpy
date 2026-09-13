@@ -20,6 +20,9 @@ Upstream copyright notices and licensing are preserved.
 
 ## Getting started
 
+Download the portable ZIP from the [latest release](https://github.com/Nexusov/scrcpy/releases/latest).
+The release also includes checksums and a separate dependency source archive.
+
 These instructions apply to a prepared Windows x64 portable package. The source
 repository does not include the runtime binaries; see the [build guide](docs/BUILD.md)
 to build and package the application.
@@ -92,3 +95,7 @@ runtime DLLs belong in separate release archives rather than source history.
 
 scrcpy is licensed under [Apache-2.0](LICENSE). See [THIRD_PARTY.md](THIRD_PARTY.md)
 for component provenance and dependency licensing information.
+
+This software uses FFmpeg libraries under LGPL-2.1-or-later. Corresponding
+[dependency sources](https://github.com/Nexusov/scrcpy/releases/latest) are provided
+alongside the portable download. Third-party license notices are included in `licenses/`.

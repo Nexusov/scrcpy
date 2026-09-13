@@ -1,20 +1,52 @@
-# Components and provenance
+# Third-party components
 
-This repository contains scrcpy source code derived from Genymobile/scrcpy
-v4.0, commit `2322868e9e256eb5fce0b3d659ab2a409f29bae1`.
-Upstream copyright notices and the Apache-2.0 license are retained.
-The reconnect modifications are documented in `docs/CHANGES.md`.
+scrcpy Seamless is based on Genymobile scrcpy 4.0. The original copyright
+notices and [Apache-2.0 license](LICENSE) are retained. Local modifications are
+described in [docs/CHANGES.md](docs/CHANGES.md).
 
-Compiled dependencies are not tracked in this source repository. A portable
-package also uses the following independently maintained components:
+## Portable package
 
-- SDL 3.4.8: https://github.com/libsdl-org/SDL/tree/release-3.4.8
-- FFmpeg 8.1 libraries: https://ffmpeg.org/
-- Android Debug Bridge, Platform Tools 34.0.5: https://developer.android.com/tools/releases/platform-tools
-- scrcpy Android server v4.0: https://github.com/Genymobile/scrcpy/releases/tag/v4.0
+| Component | Version | License / notices |
+| --- | --- | --- |
+| scrcpy client and Android server | 4.0 with client reconnection changes | Apache-2.0, `LICENSE` |
+| SDL | 3.4.8 | zlib license, `licenses/SDL-LICENSE.txt` |
+| FFmpeg libraries | 8.1.1 | LGPL-2.1-or-later, `licenses/FFmpeg-LGPL-2.1.txt` and `licenses/FFmpeg-LICENSE.md` |
+| dav1d, embedded in FFmpeg | 1.5.3 | BSD-2-Clause, `licenses/dav1d-COPYING.txt` |
+| zlib, embedded in FFmpeg | 1.3.1 | zlib license, `licenses/zlib-LICENSE.txt` |
+| Android Debug Bridge and Windows ADB libraries | 34.0.5-10900879 | Full upstream notices in `licenses/Android-Platform-Tools-NOTICE.txt` |
+| GCC / MinGW runtime support | Compiler runtime components | Notices and GCC Runtime Library Exception in `licenses/` |
 
-The existing local portable build reuses its existing runtime DLLs and ADB
-binaries. These dependencies are covered by their respective licenses, not
-by a blanket relicensing under this repository's Apache-2.0 license.
-When distributing new dependency binaries, include their corresponding license
-and source information. This repository does not vendor a compiler or SDK.
+The third-party components retain their own licenses. They are not relicensed
+under the scrcpy Apache-2.0 license. The GCC GPL text accompanies its runtime
+exception; it does not change the stated scrcpy or FFmpeg license.
+
+## Binary provenance
+
+The SDL and FFmpeg DLLs and Android server were verified byte-for-byte against
+[the official scrcpy 4.0 Windows x64 package](https://github.com/Genymobile/scrcpy/releases/tag/v4.0).
+The three ADB binaries were verified against Google's
+[Platform Tools 34.0.5 Windows package](https://dl.google.com/android/repository/platform-tools_r34.0.5-windows.zip).
+The scrcpy client is locally rebuilt with the changes in this repository.
+
+The FFmpeg DLLs report version 8.1.1 and LGPL-2.1-or-later at runtime. Their
+configuration uses shared libraries and does not enable GPL or nonfree features.
+SDL, FFmpeg, and dav1d source archive hashes match the versions pinned by the
+upstream scrcpy dependency scripts. Embedded zlib version strings identify 1.3.1.
+
+## Corresponding sources
+
+This software uses libraries from the FFmpeg project under LGPL-2.1-or-later.
+Download `scrcpy-seamless-dependency-sources.zip` from the
+[same release as the portable package](https://github.com/Nexusov/scrcpy/releases/latest).
+It contains unmodified FFmpeg 8.1.1, dav1d 1.5.3, zlib 1.3.1, and SDL 3.4.8
+source archives, source checksums, upstream dependency build scripts, and the
+configuration reported by the shipped FFmpeg DLL. No local changes were made
+to those dependency sources or binaries.
+
+The application dynamically links to the FFmpeg DLLs. Compatible modified DLLs
+can replace them in the application directory. This project adds no restriction
+on reverse engineering for debugging modifications to LGPL-covered libraries.
+
+Publish the source companion alongside every portable release. The repository
+does not include compiler installations or SDKs. Exact upstream compiler package
+revisions have not been reconstructed, and bit-identical rebuilding is not claimed.

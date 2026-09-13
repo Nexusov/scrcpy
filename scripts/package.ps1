@@ -42,6 +42,7 @@ foreach ($documentFile in @('LICENSE', 'README.md', 'THIRD_PARTY.md')) {
 }
 
 Copy-Item -LiteralPath (Join-Path $repositoryDirectory 'docs') -Destination $stagingDirectory -Recurse
+Copy-Item -LiteralPath (Join-Path $repositoryDirectory 'licenses') -Destination $stagingDirectory -Recurse
 
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $archivePath -CompressionLevel Optimal -Force
 $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
