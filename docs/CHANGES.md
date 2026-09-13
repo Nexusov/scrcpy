@@ -54,3 +54,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\launcher.Tests.p
 These tests use disposable fake ADB/client executables. They do not replace a
 physical USB-disconnection test on an Android phone. The native reconnection
 client and its runtime DLLs are unchanged by the wizard update.
+
+## Wi-Fi-only onboarding
+
+The setup wizard can now pair without a USB device. It reads the phone serial
+through the paired Wi-Fi connection and retains USB priority for future launches.
+Automatic pairing requires an unambiguous advertisement; manual pairing and
+connection endpoints must share the phone IP and use different ports. Regression
+tests cover Wi-Fi-only discovery, manual setup, configuration persistence,
+ambiguous advertisements, and accidental reuse of the pairing port.

@@ -46,8 +46,8 @@ function New-SetupLabel {
     return $label
 }
 
-$layout.Controls.Add((New-SetupLabel 'Connect your phone by USB, unlock it, enable USB debugging, and accept the authorization prompt on the phone.'), 0, 0)
-$layout.Controls.Add((New-SetupLabel '1. Select your authorized USB phone'), 0, 1)
+$layout.Controls.Add((New-SetupLabel 'Set up over Wi-Fi without a cable, or connect by USB. For USB, enable USB debugging and accept the authorization prompt on your unlocked phone.'), 0, 0)
+$layout.Controls.Add((New-SetupLabel '1. Choose Wi-Fi setup or an authorized USB phone'), 0, 1)
 $deviceRow = New-Object System.Windows.Forms.TableLayoutPanel
 $deviceRow.Dock = 'Fill'
 $deviceRow.AutoSize = $true
@@ -59,13 +59,15 @@ $devices = New-Object System.Windows.Forms.ComboBox
 $devices.Dock = 'Fill'
 $devices.DropDownStyle = 'DropDownList'
 $devices.DisplayMember = 'Label'
+[void]$devices.Items.Add([pscustomobject]@{ Serial = ''; Label = 'Wi-Fi only (no USB cable)' })
+$devices.SelectedIndex = 0
 $refresh = New-Object System.Windows.Forms.Button
 $refresh.Text = 'Refresh'
 $refresh.Dock = 'Fill'
 $deviceRow.Controls.Add($devices, 0, 0)
 $deviceRow.Controls.Add($refresh, 1, 0)
 $layout.Controls.Add($deviceRow, 0, 2)
-$layout.Controls.Add((New-SetupLabel '2. Optional Wi-Fi fallback (Android 11+). Connect the phone and PC to the same network. On the phone, open Wireless debugging > Pair device with pairing code.'), 0, 3)
+$layout.Controls.Add((New-SetupLabel '2. Wi-Fi setup (Android 11+). Connect the phone and PC to the same network. Open Wireless debugging > Pair device with pairing code on the phone. USB users can skip this with Use USB only.'), 0, 3)
 
 $pairingRow = New-Object System.Windows.Forms.TableLayoutPanel
 $pairingRow.Dock = 'Fill'
@@ -171,16 +173,19 @@ function Start-SetupWork {
     $status.Text = 'Checking USB devices...'
 
     if ($Operation -ne 'devices') {
-        $status.Text = 'Working... Keep your phone connected and the pairing dialog open. This can take a moment.'
+        $status.Text = 'Working... Keep your phone on the same Wi-Fi network and its pairing dialog open. This can take a moment.'
     }
 }
 
-# Enables actions only when an authorized phone has been selected.
+# Enables pairing without a cable and USB-only saving for authorized USB devices.
 function Update-SetupActions {
     $selectedDevice = $devices.SelectedItem
-    $hasDevice = $null -ne $selectedDevice
-    $usbOnly.Enabled = $hasDevice
-    $pair.Enabled = $hasDevice
+    $hasSelection = $null -ne $selectedDevice
+    $isIdle = $null -eq $script:pendingWork
+    $hasUsbDevice = $hasSelection -and [bool]$selectedDevice.Serial
+    $hasPairingCode = $pairingCode.Text -match '^\d{6}$'
+    $usbOnly.Enabled = $isIdle -and $hasUsbDevice
+    $pair.Enabled = $isIdle -and $hasSelection -and $hasPairingCode
 }
 
 $timer = New-Object System.Windows.Forms.Timer
@@ -209,19 +214,21 @@ $timer.Add_Tick({
         }
 
         $devices.Items.Clear()
+        [void]$devices.Items.Add([pscustomobject]@{ Serial = ''; Label = 'Wi-Fi only (no USB cable)' })
+        $devices.SelectedIndex = 0
         $authorizedDevices = @($result | Where-Object { $_.State -eq 'device' })
         foreach ($device in $authorizedDevices) {
             [void]$devices.Items.Add([pscustomobject]@{ Serial = $device.Serial; Label = "$($device.Model) ($($device.Serial))" })
         }
 
-        if ($devices.Items.Count -eq 1) {
-            $devices.SelectedIndex = 0
+        if ($authorizedDevices.Count -eq 1) {
+            $devices.SelectedIndex = 1
         }
 
-        $status.Text = 'Select your phone, then configure Wi-Fi or choose Use USB only. Settings are saved only when you finish.'
+        $status.Text = 'Choose Wi-Fi only or your USB phone, then enter the pairing code to finish. Settings are saved only when you finish.'
 
         if (-not $authorizedDevices.Count) {
-            $status.Text = 'No authorized USB phone found. Enable USB debugging and accept the prompt on your unlocked phone, then click Refresh. If no prompt appears, check the USB cable and install the phone manufacturer''s USB driver if needed.'
+            $status.Text = 'No authorized USB phone found. You can continue over Wi-Fi without a cable. For USB setup, connect and authorize your phone, then click Refresh.'
         }
     }
     catch {
@@ -233,6 +240,11 @@ $timer.Add_Tick({
         }
 
         $status.Text = "Setup could not finish: $message"
+
+        if ($pending.Operation -eq 'devices') {
+            $devices.SelectedIndex = 0
+            $status.Text = 'USB discovery did not finish. You can still try Wi-Fi setup without a cable, or check your USB connection and click Refresh.'
+        }
     }
     finally {
         $pending.Worker.Dispose()
@@ -255,11 +267,17 @@ $timer.Add_Tick({
     }
 })
 $devices.Add_SelectedIndexChanged({ Update-SetupActions })
+$pairingCode.Add_TextChanged({ Update-SetupActions })
+Update-SetupActions
 $refresh.Add_Click({ Start-SetupWork -Operation 'devices' })
 $usbOnly.Add_Click({
     $selection = $devices.SelectedItem
 
     if ($null -eq $selection) {
+        return
+    }
+
+    if (-not $selection.Serial) {
         return
     }
 
@@ -274,6 +292,15 @@ $pair.Add_Click({
 
     if ($pairingCode.Text -notmatch '^\d{6}$') {
         $status.Text = 'Enter the current six-digit code shown in the phone''s pairing dialog.'
+        return
+    }
+
+    $pairingAddress = $endpoint.Text.Trim()
+    $connectionAddress = $connectionEndpoint.Text.Trim()
+    $sameEndpoint = $pairingAddress -and $pairingAddress -eq $connectionAddress
+
+    if ($sameEndpoint) {
+        $status.Text = 'The pairing and connection ports are different. Use the pairing dialog address for Pairing IP:port, and the main Wireless debugging screen address for Connection IP:port.'
         return
     }
 

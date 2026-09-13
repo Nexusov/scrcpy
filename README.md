@@ -10,7 +10,7 @@ screen mirroring in the same window when switching from USB to Wi-Fi.
 - **Persistent window:** keeps the last frame visible and displays `Reconnecting...`
   in the title while waiting for the phone.
 - **Session recovery:** resumes video, audio, and device control in the same window.
-- **Guided setup:** detects your USB phone and configures Wi-Fi in a desktop wizard.
+- **Guided setup:** configures your phone over Wi-Fi or USB in a desktop wizard.
 - **USB-only mode:** start mirroring without setting up Wi-Fi.
 - **Quiet launcher:** starts without a separate console window.
 
@@ -30,16 +30,18 @@ repository does not include the runtime binaries; see the [build guide](docs/BUI
 to build and package the application.
 
 1. Extract the portable package into a writable directory and run `launch.vbs`.
-2. On your phone, enable **Developer options** and **USB debugging**. Connect it
-   by USB, unlock it, and accept the authorization prompt.
-3. In the setup window, click **Refresh** if necessary and select your phone.
-4. Choose **Use USB only** to start immediately, or configure Wi-Fi below.
+2. Choose **Wi-Fi only (no USB cable)** in the setup window, or connect a phone
+   with USB debugging enabled and select it from the list.
+3. For Wi-Fi, enable **Developer options > Wireless debugging** on your phone
+   (Android 11+). Keep the phone and PC on the same network, then open
+   **Pair device with pairing code**.
+4. Enter the six-digit code and click **Pair and finish**. If the address is not
+   discovered automatically, enter **Pairing IP:port** from the pairing dialog.
 
-For automatic USB-to-Wi-Fi reconnection, keep the phone and PC on the same
-network. On the phone, enable **Wireless debugging** and open **Pair device with
-pairing code**. Enter the six-digit code in the wizard and click **Pair and finish**.
-The wizard detects the address when possible, verifies the Wi-Fi device, and
-saves the configuration. Mirroring starts after setup completes.
+No cable or USB authorization is needed for Wi-Fi-only setup. The wizard reads
+and saves the phone identity over the verified Wi-Fi connection. With a connected,
+authorized USB phone, you can instead choose **Use USB only** to skip Wi-Fi setup.
+Mirroring starts after the first-run wizard completes.
 
 No terminal commands or manual JSON editing are required. On subsequent launches,
 run `launch.vbs` or your shortcut. Existing valid settings are reused automatically.
@@ -49,7 +51,8 @@ Cancelling setup leaves existing settings unchanged.
 ### Requirements
 
 - Windows x64, Windows PowerShell 5.1, and Windows Script Host.
-- An authorized ADB connection and a USB driver for your phone, if required.
+- An authorized ADB connection. USB mode also needs USB debugging authorization
+  and a driver for your phone, if required.
 - A device meeting the upstream scrcpy Android requirements. Wireless debugging
   requires Android 11 or later.
 - The phone and PC on the same network for Wi-Fi connectivity.
@@ -61,7 +64,7 @@ Keep the pairing-code dialog open. Enter its **IP address and pairing port** in
 
 If the paired phone still cannot be discovered, also enter **Connection IP:port**
 from the main **Wireless debugging** screen. The connection port is different
-from the pairing port. Both addresses must refer to the same phone IP. The wizard
+from the pairing port; do not copy the same address into both fields. Both addresses must refer to the same phone IP. The wizard
 verifies the phone over Wi-Fi before saving anything.
 
 Manual addresses must use IPv4, for example `192.168.1.10:37000`. A saved manual

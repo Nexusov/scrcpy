@@ -79,6 +79,10 @@ public static class FakeDeviceTool {
     Assert-Condition ($devices[1].State -eq 'unauthorized') 'Authorization state lost.'
     $paired = Complete-WirelessPairing -RootDirectory $temporaryDirectory -UsbSerial TEST123 -PairingCode 123456
     Assert-Condition ($paired.WirelessService -eq $legacy.WirelessService) 'Automatic pairing failed.'
+    $wirelessOnly = Complete-WirelessPairing -RootDirectory $temporaryDirectory -PairingCode 123456
+    Assert-Condition ($wirelessOnly.UsbSerial -eq 'TEST123') 'Wi-Fi-only setup did not read the phone identity.'
+    Assert-Condition ($wirelessOnly.WirelessService -eq $legacy.WirelessService) 'Wi-Fi-only setup lost the discovered service.'
+    Assert-RejectedPairing @{ PairingCode = '123456'; Endpoint = '192.168.1.2:4000'; ConnectionEndpoint = '192.168.1.2:4000' }
     Set-Content (Join-Path $temporaryDirectory 'identity.txt') 'OTHER'
     Assert-RejectedPairing @{ UsbSerial = 'TEST123'; PairingCode = '123456' }
     Set-Content (Join-Path $temporaryDirectory 'identity.txt') 'TEST123'
@@ -86,9 +90,17 @@ public static class FakeDeviceTool {
     Set-Content (Join-Path $temporaryDirectory 'services.txt') "adb-OTHER-pair _adb-tls-pairing._tcp 192.168.1.9:4000`nadb-TEST123-paired _adb-tls-connect._tcp 192.168.1.2:5000"
     Assert-RejectedPairing @{ UsbSerial = 'TEST123'; PairingCode = '123456' }
     Assert-Condition (-not (Test-Path (Join-Path $temporaryDirectory 'pair-called.txt'))) 'Paired a different advertised phone.'
+    Set-Content (Join-Path $temporaryDirectory 'services.txt') "adb-OTHER-pair _adb-tls-pairing._tcp 192.168.1.9:4000`nadb-TEST123-pair _adb-tls-pairing._tcp 192.168.1.2:4000"
+    Assert-RejectedPairing @{ PairingCode = '123456' }
+    Assert-Condition (-not (Test-Path (Join-Path $temporaryDirectory 'pair-called.txt'))) 'Wi-Fi-only setup selected an ambiguous pairing service.'
     Set-Content (Join-Path $temporaryDirectory 'services.txt') ''
     $manual = Complete-WirelessPairing -RootDirectory $temporaryDirectory -UsbSerial TEST123 -PairingCode 123456 -Endpoint '192.168.1.2:4000' -ConnectionEndpoint '192.168.1.2:5000'
     Assert-Condition ($manual.WirelessService -eq '192.168.1.2:5000') 'Manual discovery fallback failed.'
+    $manualWirelessOnly = Complete-WirelessPairing -RootDirectory $temporaryDirectory -PairingCode 123456 -Endpoint '192.168.1.2:4000' -ConnectionEndpoint '192.168.1.2:5000'
+    Assert-Condition ($manualWirelessOnly.UsbSerial -eq 'TEST123') 'Manual Wi-Fi-only setup lost device identity.'
+    Save-PhoneConfiguration -RootDirectory $temporaryDirectory -Configuration $manualWirelessOnly
+    Assert-Condition ((Get-PhoneConfiguration $temporaryDirectory).WirelessService -eq '192.168.1.2:5000') 'Wi-Fi-only configuration could not be saved.'
+    Save-PhoneConfiguration -RootDirectory $temporaryDirectory -Configuration $legacy
     Set-Content (Join-Path $temporaryDirectory 'reject.flag') ''
     Assert-RejectedPairing @{ UsbSerial = 'TEST123'; PairingCode = '123456'; Endpoint = '192.168.1.2:4000' }
     [IO.File]::Delete((Join-Path $temporaryDirectory 'reject.flag'))

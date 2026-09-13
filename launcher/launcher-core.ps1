@@ -210,7 +210,9 @@ function Get-PhoneWirelessServices {
 function Complete-WirelessPairing {
     param([string]$RootDirectory, [string]$UsbSerial, [string]$PairingCode, [string]$Endpoint = '', [string]$ConnectionEndpoint = '')
 
-    if (-not (Test-PhoneConfiguration -Configuration ([pscustomobject]@{ UsbSerial = $UsbSerial; WirelessService = '' }))) {
+    $hasUsbIdentity = -not [string]::IsNullOrEmpty($UsbSerial)
+
+    if ($hasUsbIdentity -and -not (Test-PhoneConfiguration -Configuration ([pscustomobject]@{ UsbSerial = $UsbSerial; WirelessService = '' }))) {
         throw 'Select a valid USB phone first.'
     }
 
@@ -224,7 +226,11 @@ function Complete-WirelessPairing {
 
     if (-not $Endpoint) {
         $services = @(Get-PairingServices -RootDirectory $RootDirectory)
-        $matchingServices = @($services | Where-Object { $_.Name.StartsWith('adb-' + $UsbSerial + '-') })
+        $matchingServices = $services
+
+        if ($hasUsbIdentity) {
+            $matchingServices = @($services | Where-Object { $_.Name.StartsWith('adb-' + $UsbSerial + '-') })
+        }
 
         if ($matchingServices.Count -ne 1) {
             throw 'Enter the IP address and pairing port from the phone pairing-code screen.'
@@ -238,6 +244,10 @@ function Complete-WirelessPairing {
     }
 
     $pairingAddress = ($Endpoint -split ':')[0]
+
+    if ($ConnectionEndpoint -eq $Endpoint) {
+        throw 'Pairing and connection ports are different. Leave Connection IP:port blank for discovery, or use the address on the main Wireless debugging screen.'
+    }
 
     if ($ConnectionEndpoint -and ($ConnectionEndpoint -split ':')[0] -ne $pairingAddress) {
         throw 'The pairing and connection addresses must belong to the same phone IP.'
@@ -256,8 +266,13 @@ function Complete-WirelessPairing {
 
     for ($attempt = 0; $attempt -lt $discoveryAttempts; $attempt++) {
         try {
-            $wirelessServices = @(Get-PhoneWirelessServices -RootDirectory $RootDirectory -UsbSerial $UsbSerial |
-                Where-Object { ($_.Endpoint -split ':')[0] -eq $pairingAddress })
+            $discoveredServices = @(Get-AdbServices -RootDirectory $RootDirectory -ServiceType '_adb-tls-connect._tcp')
+
+            if ($hasUsbIdentity) {
+                $discoveredServices = @($discoveredServices | Where-Object { $_.Name.StartsWith('adb-' + $UsbSerial + '-') })
+            }
+
+            $wirelessServices = @($discoveredServices | Where-Object { ($_.Endpoint -split ':')[0] -eq $pairingAddress })
         } catch {
 
             if (-not $ConnectionEndpoint) {
@@ -277,7 +292,7 @@ function Complete-WirelessPairing {
     }
 
     if (-not $wirelessServices.Count) {
-        throw 'Pairing completed, but this USB phone was not discovered over Wi-Fi. Check the selected phone and network, then try again. Settings were not changed.'
+        throw 'Pairing completed, but the phone was not discovered over Wi-Fi. Enter Connection IP:port from the main Wireless debugging screen, then retry with a fresh pairing code. Settings were not changed.'
     }
 
     foreach ($service in $wirelessServices) {
@@ -289,7 +304,13 @@ function Complete-WirelessPairing {
             }
 
             $identity = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('-s', $service.Endpoint, 'shell', 'getprop', 'ro.serialno')
-            $verifiedIdentity = $identity.ExitCode -eq 0 -and $identity.Output.Trim() -ceq $UsbSerial
+            $connectedSerial = $identity.Output.Trim()
+            $validIdentity = Test-PhoneConfiguration -Configuration ([pscustomobject]@{ UsbSerial = $connectedSerial; WirelessService = '' })
+            $verifiedIdentity = $identity.ExitCode -eq 0 -and $validIdentity
+
+            if ($hasUsbIdentity) {
+                $verifiedIdentity = $verifiedIdentity -and $connectedSerial -ceq $UsbSerial
+            }
         } catch {
             continue
         }
@@ -297,16 +318,16 @@ function Complete-WirelessPairing {
         if ($verifiedIdentity) {
             $wirelessTarget = $service.Endpoint
 
-            if ($service.Name) {
+            if ($service.Name.StartsWith('adb-' + $connectedSerial + '-')) {
                 $wirelessTarget = $service.Name + '._adb-tls-connect._tcp'
             }
 
             return [pscustomobject]@{
-                UsbSerial = $UsbSerial
+                UsbSerial = $connectedSerial
                 WirelessService = $wirelessTarget
             }
         }
     }
 
-    throw 'The Wi-Fi connection could not be verified as the selected USB phone. Settings were not changed.'
+    throw 'The Wi-Fi device identity could not be verified. Check the phone and connection address. Settings were not changed.'
 }
