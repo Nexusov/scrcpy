@@ -33,7 +33,7 @@ foreach ($runtimeFile in $runtimeFiles) {
     Copy-Item -LiteralPath (Join-Path $RuntimeDirectory $runtimeFile) -Destination $stagingDirectory
 }
 
-foreach ($launcherFile in @('launch.ps1', 'launch.vbs', 'launcher-core.ps1', 'setup.ps1', 'setup.vbs', 'phone.example.json')) {
+foreach ($launcherFile in @('launch.ps1', 'launch.vbs', 'Start.vbs', 'launcher-core.ps1', 'setup.ps1', 'setup.vbs', 'phone.example.json')) {
     Copy-Item -LiteralPath (Join-Path $repositoryDirectory ('launcher\' + $launcherFile)) -Destination $stagingDirectory
 }
 

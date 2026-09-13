@@ -42,7 +42,22 @@ function Invoke-AdbCommand {
     }
 }
 
-# Validate both legacy Wi-Fi settings and the new USB-only configuration.
+# Infer the original behavior when older settings have no explicit mode.
+function Get-ConnectionMode {
+    param($Configuration)
+
+    if ($Configuration.ConnectionMode) {
+        return [string]$Configuration.ConnectionMode
+    }
+
+    if ($Configuration.WirelessService) {
+        return 'auto'
+    }
+
+    return 'usb'
+}
+
+# Validate explicit connection modes and backwards-compatible device settings.
 function Test-PhoneConfiguration {
     param($Configuration)
 
@@ -55,7 +70,11 @@ function Test-PhoneConfiguration {
     $validSerial = $serial -match '^[A-Za-z0-9_-]+$' -and $serial -ne 'YOUR_USB_SERIAL'
     $expectedService = '^adb-' + [regex]::Escape($serial) + '-[A-Za-z0-9_-]+\._adb-tls-connect\._tcp$'
     $validService = -not $service -or $service -match $expectedService -or (Test-PairingEndpoint -Endpoint $service)
-    return $validSerial -and $validService
+    $mode = Get-ConnectionMode -Configuration $Configuration
+    $validMode = $mode -in @('usb', 'wifi', 'auto')
+    $modeMatchesService = ($mode -eq 'usb' -and -not $service) -or ($mode -ne 'usb' -and [bool]$service)
+    $validConfiguration = $validSerial -and $validService -and $validMode -and $modeMatchesService
+    return $validConfiguration
 }
 
 # Read settings without replacing malformed or existing files.
@@ -93,6 +112,7 @@ function Save-PhoneConfiguration {
     $json = [ordered]@{
         UsbSerial = [string]$Configuration.UsbSerial
         WirelessService = [string]$Configuration.WirelessService
+        ConnectionMode = Get-ConnectionMode -Configuration $Configuration
     } | ConvertTo-Json
 
     try {

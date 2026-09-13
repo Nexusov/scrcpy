@@ -1,121 +1,124 @@
 # scrcpy Seamless
 
-A Windows fork of [scrcpy 4.0](https://github.com/Genymobile/scrcpy) that keeps
-screen mirroring in the same window when switching from USB to Wi-Fi.
+Mirror and control your Android phone on Windows. Connect by USB, Wi-Fi, or both;
+when a USB connection drops, Wi-Fi fallback restores mirroring in the same window.
 
-## Features
+An independent fork of [scrcpy 4.0](https://github.com/Genymobile/scrcpy), not an
+official [Genymobile](https://github.com/genymobile) release.
 
-- **USB priority:** uses an authorized USB connection when available at startup.
-- **Wi-Fi fallback:** reconnects over Wi-Fi when the USB connection is lost.
-- **Persistent window:** keeps the last frame visible and displays `Reconnecting...`
-  in the title while waiting for the phone.
-- **Session recovery:** resumes video, audio, and device control in the same window.
-- **Guided setup:** configures your phone over Wi-Fi or USB in a desktop wizard.
-- **USB-only mode:** start mirroring without setting up Wi-Fi.
-- **Quiet launcher:** starts without a separate console window.
+## Download and start
 
-Closing the window stops reconnection attempts. Switching back from Wi-Fi to USB
-requires restarting the application.
+1. Open the [latest release](https://github.com/Nexusov/scrcpy/releases/latest) and
+   download **`scrcpy-seamless-win64.zip`**. The dependency source archive and
+   GitHub's **Source code** downloads are not needed to run the app.
+2. Extract the ZIP into a folder where you can save files. Do not run it inside
+   the archive.
+3. Double-click **`Start.vbs`** and choose how to connect your phone in the setup
+   wizard. Follow the instructions below for your preferred connection.
 
-This is an independent modification, not an official [Genymobile](https://github.com/genymobile) release.
-Upstream copyright notices and licensing are preserved.
+Mirroring starts when setup finishes. After that, use **`Start.vbs`** or your
+shortcut to launch the app. No installation, terminal commands, or manual
+configuration files are needed. Keep all extracted files together.
 
-## Getting started
+To change the connection mode or phone later, run **`setup.vbs`**, then restart
+mirroring. Cancelling setup keeps your previous settings. Existing `launch.vbs`
+shortcuts continue to work.
 
-Download the portable ZIP from the [latest release](https://github.com/Nexusov/scrcpy/releases/latest).
-The release also includes checksums and a separate dependency source archive.
+## Choose a connection
 
-These instructions apply to a prepared Windows x64 portable package. The source
-repository does not include the runtime binaries; see the [build guide](docs/BUILD.md)
-to build and package the application.
+| Mode | What you need | How it works |
+| --- | --- | --- |
+| **USB** | A data cable and USB debugging | Mirrors over the cable; Wi-Fi setup is skipped. |
+| **Wi-Fi** | Android 11+ and Wireless debugging | Pairs and mirrors without a USB cable. |
+| **USB + Wi-Fi** (recommended) | Both of the above | Prefers USB at startup and reconnects over Wi-Fi if the cable is removed. |
 
-1. Extract the portable package into a writable directory and run `launch.vbs`.
-2. Choose **Wi-Fi only (no USB cable)** in the setup window, or connect a phone
-   with USB debugging enabled and select it from the list.
-3. For Wi-Fi, enable **Developer options > Wireless debugging** on your phone
-   (Android 11+). Keep the phone and PC on the same network, then open
-   **Pair device with pairing code**.
-4. Enter the six-digit code and click **Pair and finish**. If the address is not
-   discovered automatically, enter **Pairing IP:port** from the pairing dialog.
+### USB
 
-No cable or USB authorization is needed for Wi-Fi-only setup. The wizard reads
-and saves the phone identity over the verified Wi-Fi connection. With a connected,
-authorized USB phone, you can instead choose **Use USB only** to skip Wi-Fi setup.
-Mirroring starts after the first-run wizard completes.
+1. Enable **Developer options** and **USB debugging** on your phone.
+2. Connect a data-capable USB cable, unlock the phone, and accept the USB debugging
+   authorization prompt. Allow this computer permanently if you trust it.
+3. Choose **USB only** in the wizard, select your phone, and finish setup.
 
-No terminal commands or manual JSON editing are required. On subsequent launches,
-run `launch.vbs` or your shortcut. Existing valid settings are reused automatically.
-To change phones or enable Wi-Fi later, run `setup.vbs`, then restart mirroring.
-Cancelling setup leaves existing settings unchanged.
+The location of Developer options varies by phone manufacturer. If your phone
+is missing from the list, check the cable, accept the authorization prompt, and
+click **Refresh**. Some phones require a manufacturer USB driver on Windows.
 
-### Requirements
+### Wi-Fi
 
-- Windows x64, Windows PowerShell 5.1, and Windows Script Host.
-- An authorized ADB connection. USB mode also needs USB debugging authorization
-  and a driver for your phone, if required.
-- A device meeting the upstream scrcpy Android requirements. Wireless debugging
-  requires Android 11 or later.
-- The phone and PC on the same network for Wi-Fi connectivity.
+1. Connect the phone and PC to the same network.
+2. On the phone, enable **Developer options > Wireless debugging**, then open
+   **Pair device with pairing code**. Keep this dialog open.
+3. Choose **Wi-Fi only (no USB cable)** in the wizard, enter the six-digit code,
+   and complete pairing.
 
-### If automatic Wi-Fi discovery fails
+The wizard tries to discover the phone's address automatically. If discovery fails, use
+**Enter addresses manually**; see [Wi-Fi troubleshooting](#wi-fi-troubleshooting).
+No USB cable or USB debugging authorization is needed for this mode.
 
-Keep the pairing-code dialog open. Enter its **IP address and pairing port** in
-**Pairing IP:port**, then enter the current pairing code again.
+For **USB + Wi-Fi**, complete both the USB selection and Wi-Fi pairing in the
+wizard. Settings are saved for later launches.
 
-If the paired phone still cannot be discovered, also enter **Connection IP:port**
-from the main **Wireless debugging** screen. The connection port is different
-from the pairing port; do not copy the same address into both fields. Both addresses must refer to the same phone IP. The wizard
-verifies the phone over Wi-Fi before saving anything.
+## What happens when the cable is removed?
 
-Manual addresses must use IPv4, for example `192.168.1.10:37000`. A saved manual
-connection address may change when the phone reconnects to the network or
-Wireless debugging restarts; rerun `setup.vbs` if it stops working. Automatically
-discovered service names are refreshed when available.
+In **USB + Wi-Fi** mode, the mirroring window stays open, keeps the last frame
+visible, and shows `Reconnecting...` while waiting for the phone. Video, audio,
+and control resume after reconnection. Wi-Fi must remain available on both devices.
 
-### Settings and diagnostics
+Switching back from Wi-Fi to USB requires restarting the app. Closing the window
+stops reconnection attempts. You cannot control the phone while disconnected,
+and the window may briefly stop responding while the old session shuts down.
 
-The wizard creates `phone.json` in the application directory. Advanced users can
-still use `phone.example.json` as a reference: `UsbSerial` identifies the USB
-phone; `WirelessService` contains its discovered ADB service or a manual connection
-address. An empty `WirelessService` enables USB-only mode.
+## Requirements
 
-Keep the application in a writable folder. Device settings and logs are excluded
-from release packages and Git. Check `last-run.log` and `last-run-errors.log` for
-launch errors. Setup errors appear directly in the wizard; pairing codes are not
-saved in the configuration.
+- Windows x64 with Windows PowerShell 5.1 and Windows Script Host enabled.
+- An Android device supported by [scrcpy 4.0](https://github.com/Genymobile/scrcpy/tree/v4.0#prerequisites).
+- Android 11 or later for the Wi-Fi setup described above.
+- A data-capable cable for USB; a shared network for Wi-Fi.
+
+ADB and the required runtime libraries are included in the portable ZIP. Build
+tools are not needed.
+
+## Wi-Fi troubleshooting
+
+**Pairing cannot find the phone:** choose **Enter addresses manually** and copy
+**Pairing IP:port** from the phone's pairing-code dialog. Enter a fresh code if
+that dialog was closed or the previous code expired.
+
+**Pairing succeeds, but connection fails:** enter **Connection IP:port** from the
+main **Wireless debugging** screen. This is a different port from the pairing
+port. Both addresses must belong to the same phone. For example, an address looks
+like `192.168.1.10:37000`; use the actual values shown on your phone.
+
+**A saved connection stops working:** ensure Wireless debugging is still enabled
+and both devices are on the same network. A manually entered connection address
+can change after a network change or restart of Wireless debugging. Run
+`setup.vbs` again to update it. Pair again if the phone has forgotten the PC.
+
+For other launch errors, check `last-run.log` and `last-run-errors.log` in the
+application folder. Setup errors appear in the wizard. Your device settings are
+stored locally in `phone.json`; pairing codes are not saved. Release archives do
+not contain personal device settings or logs.
 
 ## Limitations
 
-Reconnection mode supports regular screen mirroring. Recording, session time
-limits, and OTG/AOA are not supported in this mode. The portable build supports
-USB mirroring and control through ADB; OTG is disabled at build time.
-
-Device control is unavailable while disconnected. The window may briefly stop
-responding while the previous session shuts down.
+Reconnection mode is intended for regular screen mirroring. Recording, session
+time limits, and OTG/AOA are not supported in this mode. The portable build uses
+ADB for USB mirroring and control; OTG is disabled at build time.
 
 ## Development
 
-See the [build guide](docs/BUILD.md) for dependencies and build commands, and the
-[change notes](docs/CHANGES.md) for implementation details and validation coverage.
-Build tools and development headers are only required for building the application.
-
-| Path | Purpose |
-| --- | --- |
-| `src/scrcpy/` | Complete scrcpy 4.0 source with reconnection changes |
-| `launcher/` | Launch scripts, setup wizard, and shared device configuration helpers |
-| `scripts/build.ps1` | Builds the client using separately installed tools |
-| `scripts/package.ps1` | Creates a portable archive without personal settings or logs |
-| `docs/BUILD.md` | Build and packaging instructions |
-| `docs/CHANGES.md` | Reconnection implementation and validation notes |
-
-`outputs/`, `work/`, `.build/`, and `dist/` are excluded from Git. Executables and
-runtime DLLs belong in separate release archives rather than source history.
+See the [build and packaging guide](docs/BUILD.md) and
+[implementation and validation notes](docs/CHANGES.md). The repository contains
+source code and launch scripts; ready-to-run binaries are distributed through
+[Releases](https://github.com/Nexusov/scrcpy/releases).
 
 ## License
 
 scrcpy is licensed under [Apache-2.0](LICENSE). See [THIRD_PARTY.md](THIRD_PARTY.md)
-for component provenance and dependency licensing information.
+for component provenance and dependency licensing information. Upstream copyright
+notices and licensing are preserved.
 
 This software uses FFmpeg libraries under LGPL-2.1-or-later. Corresponding
 [dependency sources](https://github.com/Nexusov/scrcpy/releases/latest) are provided
-alongside the portable download. Third-party license notices are included in `licenses/`.
+alongside the portable download. Third-party license notices are included in
+`licenses/`.

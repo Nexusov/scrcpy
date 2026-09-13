@@ -46,8 +46,8 @@ function New-SetupLabel {
     return $label
 }
 
-$layout.Controls.Add((New-SetupLabel 'Set up over Wi-Fi without a cable, or connect by USB. For USB, enable USB debugging and accept the authorization prompt on your unlocked phone.'), 0, 0)
-$layout.Controls.Add((New-SetupLabel '1. Choose Wi-Fi setup or an authorized USB phone'), 0, 1)
+$layout.Controls.Add((New-SetupLabel 'Choose how scrcpy connects. USB + Wi-Fi uses USB when available and reconnects wirelessly if the cable is removed.'), 0, 0)
+$layout.Controls.Add((New-SetupLabel 'USB: connect and authorize your phone, then select it below.'), 0, 1)
 $deviceRow = New-Object System.Windows.Forms.TableLayoutPanel
 $deviceRow.Dock = 'Fill'
 $deviceRow.AutoSize = $true
@@ -59,15 +59,14 @@ $devices = New-Object System.Windows.Forms.ComboBox
 $devices.Dock = 'Fill'
 $devices.DropDownStyle = 'DropDownList'
 $devices.DisplayMember = 'Label'
-[void]$devices.Items.Add([pscustomobject]@{ Serial = ''; Label = 'Wi-Fi only (no USB cable)' })
-$devices.SelectedIndex = 0
+
 $refresh = New-Object System.Windows.Forms.Button
 $refresh.Text = 'Refresh'
 $refresh.Dock = 'Fill'
 $deviceRow.Controls.Add($devices, 0, 0)
 $deviceRow.Controls.Add($refresh, 1, 0)
 $layout.Controls.Add($deviceRow, 0, 2)
-$layout.Controls.Add((New-SetupLabel '2. Wi-Fi setup (Android 11+). Connect the phone and PC to the same network. Open Wireless debugging > Pair device with pairing code on the phone. USB users can skip this with Use USB only.'), 0, 3)
+$layout.Controls.Add((New-SetupLabel 'Wi-Fi: connect both devices to the same network. On the phone (Android 11+), open Wireless debugging > Pair device with pairing code.'), 0, 3)
 
 $pairingRow = New-Object System.Windows.Forms.TableLayoutPanel
 $pairingRow.Dock = 'Fill'
@@ -125,14 +124,50 @@ $buttons.AutoSize = $true
 $cancel = New-Object System.Windows.Forms.Button
 $cancel.Text = 'Cancel'
 $cancel.AutoSize = $true
-$usbOnly = New-Object System.Windows.Forms.Button
-$usbOnly.Text = 'Use USB only'
-$usbOnly.AutoSize = $true
-$pair = New-Object System.Windows.Forms.Button
-$pair.Text = 'Pair and finish'
-$pair.AutoSize = $true
-$buttons.Controls.AddRange(@($cancel, $usbOnly, $pair))
+$finish = New-Object System.Windows.Forms.Button
+$finish.Text = 'Pair and finish'
+$finish.AutoSize = $true
+$buttons.Controls.AddRange(@($cancel, $finish))
 $layout.Controls.Add($buttons, 0, 10)
+$usbInstructions = $layout.GetControlFromPosition(0, 1)
+$wifiInstructions = $layout.GetControlFromPosition(0, 3)
+$pairingHint = $layout.GetControlFromPosition(0, 6)
+$connectionHint = $layout.GetControlFromPosition(0, 8)
+$usbControls = @($usbInstructions, $deviceRow)
+$wifiControls = @($wifiInstructions, $pairingRow)
+$manualControls = @($endpointRow, $pairingHint, $connectionRow, $connectionHint)
+foreach ($control in @($layout.Controls)) {
+    $row = $layout.GetRow($control)
+
+    if ($row -ge 1) {
+        $layout.SetRow($control, $row + 1)
+    }
+}
+$mode = New-Object System.Windows.Forms.ComboBox
+$mode.Dock = 'Fill'
+$mode.DropDownStyle = 'DropDownList'
+$mode.DisplayMember = 'Label'
+[void]$mode.Items.Add([pscustomobject]@{ Value = 'auto'; Label = 'USB + Wi-Fi (recommended)' })
+[void]$mode.Items.Add([pscustomobject]@{ Value = 'usb'; Label = 'USB only' })
+[void]$mode.Items.Add([pscustomobject]@{ Value = 'wifi'; Label = 'Wi-Fi only (no USB cable)' })
+$mode.SelectedIndex = 0
+$layout.Controls.Add($mode, 0, 1)
+foreach ($control in @($layout.Controls)) {
+    $row = $layout.GetRow($control)
+
+    if ($row -ge 6) {
+        $layout.SetRow($control, $row + 1)
+    }
+}
+$manualAddresses = New-Object System.Windows.Forms.CheckBox
+$manualAddresses.Text = 'Enter addresses manually'
+$manualAddresses.AutoSize = $true
+$manualAddresses.Dock = 'Fill'
+$layout.Controls.Add($manualAddresses, 0, 6)
+$layout.RowCount = 13
+while ($layout.RowStyles.Count -lt $layout.RowCount) {
+    [void]$layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('AutoSize')))
+}
 
 # Runs ADB and configuration writes away from the Windows Forms thread.
 function Start-SetupWork {
@@ -154,40 +189,121 @@ function Start-SetupWork {
 
         if ($Action -eq 'pair') {
             $configuration = Complete-WirelessPairing -RootDirectory $Directory -UsbSerial $InputValues.Serial -PairingCode $InputValues.Code -Endpoint $InputValues.Endpoint -ConnectionEndpoint $InputValues.ConnectionEndpoint
+            $configuration | Add-Member -NotePropertyName ConnectionMode -NotePropertyValue $InputValues.Mode -Force
             Save-PhoneConfiguration -RootDirectory $Directory -Configuration $configuration
             return
         }
 
-        $configuration = [pscustomobject]@{ UsbSerial = $InputValues.Serial; WirelessService = '' }
+        $configuration = [pscustomobject]@{ UsbSerial = $InputValues.Serial; WirelessService = ''; ConnectionMode = 'usb' }
         Save-PhoneConfiguration -RootDirectory $Directory -Configuration $configuration
     }).AddArgument($script:setupRoot).AddArgument($Operation).AddArgument($Values)
     $script:pendingWork = @{ Worker = $worker; Handle = $worker.BeginInvoke(); Operation = $Operation }
-    $devices.Enabled = $false
-    $refresh.Enabled = $false
-    $pair.Enabled = $false
-    $usbOnly.Enabled = $false
-    $pairingCode.Enabled = $false
-    $endpoint.Enabled = $false
-    $connectionEndpoint.Enabled = $false
-    $cancel.Enabled = $false
+    Update-SetupActions
     $status.Text = 'Checking USB devices...'
 
-    if ($Operation -ne 'devices') {
+    if ($Operation -eq 'pair') {
         $status.Text = 'Working... Keep your phone on the same Wi-Fi network and its pairing dialog open. This can take a moment.'
+    }
+
+    if ($Operation -eq 'usb') {
+        $status.Text = 'Saving USB settings...'
     }
 }
 
-# Enables pairing without a cable and USB-only saving for authorized USB devices.
+# Reflects the selected transport mode without requiring hidden inputs.
 function Update-SetupActions {
-    $selectedDevice = $devices.SelectedItem
-    $hasSelection = $null -ne $selectedDevice
+    $connectionMode = $mode.SelectedItem.Value
     $isIdle = $null -eq $script:pendingWork
-    $hasUsbDevice = $hasSelection -and [bool]$selectedDevice.Serial
+    $needsUsb = $connectionMode -ne 'wifi'
+    $needsWifi = $connectionMode -ne 'usb'
+    $hasUsbDevice = $null -ne $devices.SelectedItem
     $hasPairingCode = $pairingCode.Text -match '^\d{6}$'
-    $usbOnly.Enabled = $isIdle -and $hasUsbDevice
-    $pair.Enabled = $isIdle -and $hasSelection -and $hasPairingCode
+    $usbReady = -not $needsUsb -or $hasUsbDevice
+    $wifiReady = -not $needsWifi -or $hasPairingCode
+    $canFinish = $isIdle -and $usbReady -and $wifiReady
+    $finish.Enabled = $canFinish
+    $finish.Text = 'Pair and finish'
+
+    if (-not $needsWifi) {
+        $finish.Text = 'Save USB setup'
+    }
+
+    foreach ($control in $usbControls) {
+        $control.Visible = $needsUsb
+    }
+
+    foreach ($control in $wifiControls) {
+        $control.Visible = $needsWifi
+    }
+
+    $manualAddresses.Visible = $needsWifi
+    foreach ($control in $manualControls) {
+        $control.Visible = $needsWifi -and $manualAddresses.Checked
+    }
+
+    foreach ($control in @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $cancel)) {
+        $control.Enabled = $isIdle
+    }
 }
 
+# Explains the current mode when the user changes setup options.
+function Update-SetupStatus {
+    $status.Text = 'Select an authorized USB phone and enter its Wi-Fi pairing code. USB + Wi-Fi requires both connections.'
+
+    if ($mode.SelectedItem.Value -eq 'usb') {
+        $status.Text = 'Connect your phone by USB, enable USB debugging, and approve this PC on your phone. No Wi-Fi pairing is needed.'
+        return
+    }
+
+    if ($mode.SelectedItem.Value -eq 'wifi') {
+        $status.Text = 'No USB cable is needed. Enter your phone pairing code. Enable manual addresses if automatic discovery cannot find it.'
+    }
+}
+
+# Builds mode-specific input while ignoring values in hidden address fields.
+function Get-SetupInput {
+    $connectionMode = $mode.SelectedItem.Value
+    $serial = ''
+
+    if ($connectionMode -ne 'wifi' -and $null -ne $devices.SelectedItem) {
+        $serial = $devices.SelectedItem.Serial
+    }
+
+    $pairingAddress = ''
+    $connectionAddress = ''
+
+    if ($manualAddresses.Checked -and $connectionMode -ne 'usb') {
+        $pairingAddress = $endpoint.Text.Trim()
+        $connectionAddress = $connectionEndpoint.Text.Trim()
+    }
+
+    return @{ Serial = $serial; Code = $pairingCode.Text; Mode = $connectionMode; Endpoint = $pairingAddress; ConnectionEndpoint = $connectionAddress }
+}
+
+# Starts the single finish action for the selected transport mode.
+function Complete-Setup {
+    Update-SetupActions
+
+    if (-not $finish.Enabled) {
+        return
+    }
+
+    $values = Get-SetupInput
+
+    if ($values.Mode -eq 'usb') {
+        Start-SetupWork -Operation 'usb' -Values $values
+        return
+    }
+
+    $sameEndpoint = $values.Endpoint -and $values.Endpoint -eq $values.ConnectionEndpoint
+
+    if ($sameEndpoint) {
+        $status.Text = 'The pairing and connection ports are different. Use the pairing dialog address for Pairing IP:port, and the main Wireless debugging screen address for Connection IP:port.'
+        return
+    }
+
+    Start-SetupWork -Operation 'pair' -Values $values
+}
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 150
 $timer.Add_Tick({
@@ -214,21 +330,19 @@ $timer.Add_Tick({
         }
 
         $devices.Items.Clear()
-        [void]$devices.Items.Add([pscustomobject]@{ Serial = ''; Label = 'Wi-Fi only (no USB cable)' })
-        $devices.SelectedIndex = 0
         $authorizedDevices = @($result | Where-Object { $_.State -eq 'device' })
         foreach ($device in $authorizedDevices) {
             [void]$devices.Items.Add([pscustomobject]@{ Serial = $device.Serial; Label = "$($device.Model) ($($device.Serial))" })
         }
 
         if ($authorizedDevices.Count -eq 1) {
-            $devices.SelectedIndex = 1
+            $devices.SelectedIndex = 0
         }
 
-        $status.Text = 'Choose Wi-Fi only or your USB phone, then enter the pairing code to finish. Settings are saved only when you finish.'
+        Update-SetupStatus
 
-        if (-not $authorizedDevices.Count) {
-            $status.Text = 'No authorized USB phone found. You can continue over Wi-Fi without a cable. For USB setup, connect and authorize your phone, then click Refresh.'
+        if (-not $authorizedDevices.Count -and $mode.SelectedItem.Value -ne 'wifi') {
+            $status.Text = 'No authorized USB phone found. Connect and authorize your phone, then click Refresh, or select Wi-Fi only to continue without a cable.'
         }
     }
     catch {
@@ -242,8 +356,12 @@ $timer.Add_Tick({
         $status.Text = "Setup could not finish: $message"
 
         if ($pending.Operation -eq 'devices') {
-            $devices.SelectedIndex = 0
-            $status.Text = 'USB discovery did not finish. You can still try Wi-Fi setup without a cable, or check your USB connection and click Refresh.'
+            $devices.Items.Clear()
+            Update-SetupStatus
+
+            if ($mode.SelectedItem.Value -ne 'wifi') {
+                $status.Text = 'USB discovery did not finish. Check your USB connection and click Refresh, or select Wi-Fi only to continue without a cable.'
+            }
         }
     }
     finally {
@@ -256,56 +374,18 @@ $timer.Add_Tick({
         }
 
         if (-not $script:setupSaved) {
-            $devices.Enabled = $true
-            $refresh.Enabled = $true
-            $pairingCode.Enabled = $true
-            $endpoint.Enabled = $true
-            $connectionEndpoint.Enabled = $true
-            $cancel.Enabled = $true
             Update-SetupActions
         }
     }
 })
 $devices.Add_SelectedIndexChanged({ Update-SetupActions })
 $pairingCode.Add_TextChanged({ Update-SetupActions })
+$mode.Add_SelectedIndexChanged({ Update-SetupActions; Update-SetupStatus })
+$manualAddresses.Add_CheckedChanged({ Update-SetupActions })
 Update-SetupActions
+Update-SetupStatus
 $refresh.Add_Click({ Start-SetupWork -Operation 'devices' })
-$usbOnly.Add_Click({
-    $selection = $devices.SelectedItem
-
-    if ($null -eq $selection) {
-        return
-    }
-
-    if (-not $selection.Serial) {
-        return
-    }
-
-    Start-SetupWork -Operation 'usb' -Values @{ Serial = $selection.Serial }
-})
-$pair.Add_Click({
-    $selection = $devices.SelectedItem
-
-    if ($null -eq $selection) {
-        return
-    }
-
-    if ($pairingCode.Text -notmatch '^\d{6}$') {
-        $status.Text = 'Enter the current six-digit code shown in the phone''s pairing dialog.'
-        return
-    }
-
-    $pairingAddress = $endpoint.Text.Trim()
-    $connectionAddress = $connectionEndpoint.Text.Trim()
-    $sameEndpoint = $pairingAddress -and $pairingAddress -eq $connectionAddress
-
-    if ($sameEndpoint) {
-        $status.Text = 'The pairing and connection ports are different. Use the pairing dialog address for Pairing IP:port, and the main Wireless debugging screen address for Connection IP:port.'
-        return
-    }
-
-    Start-SetupWork -Operation 'pair' -Values @{ Serial = $selection.Serial; Code = $pairingCode.Text; Endpoint = $endpoint.Text.Trim(); ConnectionEndpoint = $connectionEndpoint.Text.Trim() }
-})
+$finish.Add_Click({ Complete-Setup })
 $cancel.Add_Click({ $form.Close() })
 $form.Add_FormClosing({
     param($sender, $eventArguments)

@@ -69,6 +69,11 @@ public static class FakeDeviceTool {
     $legacy = [pscustomobject]@{ UsbSerial = 'TEST123'; WirelessService = 'adb-TEST123-paired._adb-tls-connect._tcp' }
     Save-PhoneConfiguration -RootDirectory $temporaryDirectory -Configuration $legacy
     Assert-Condition ((Get-PhoneConfiguration $temporaryDirectory).WirelessService -eq $legacy.WirelessService) 'Legacy configuration rejected.'
+    Assert-Condition ((Get-ConnectionMode $legacy) -eq 'auto') 'Legacy Wi-Fi settings lost automatic mode.'
+    $invalidMode = [pscustomobject]@{ UsbSerial = 'TEST123'; WirelessService = ''; ConnectionMode = 'wifi' }
+    Assert-Condition (-not (Test-PhoneConfiguration $invalidMode)) 'Wi-Fi mode accepted missing Wi-Fi settings.'
+    $invalidMode.ConnectionMode = 'unexpected'
+    Assert-Condition (-not (Test-PhoneConfiguration $invalidMode)) 'Unknown connection mode accepted.'
     Assert-Condition (-not (Test-PairingEndpoint '999.1.1.1:5000')) 'Invalid IPv4 accepted.'
     Assert-Condition (-not (Test-PairingEndpoint '192.168.1.2:65536')) 'Invalid port accepted.'
     Set-Content (Join-Path $temporaryDirectory 'devices.txt') "TEST123 device model:Test_Phone`nLOCKED unauthorized`nemulator-5554 device`n192.168.1.2:4000 device"
@@ -110,6 +115,13 @@ public static class FakeDeviceTool {
     Assert-Condition ($LASTEXITCODE -eq 0) 'Legacy launch failed.'
     $launchResult = Get-Content (Join-Path $temporaryDirectory 'launch-result.txt') -Raw
     Assert-Condition ($launchResult.StartsWith('-s TEST123 ')) 'USB did not take priority.'
+    $wifiMode = [pscustomobject]@{ UsbSerial = 'TEST123'; WirelessService = $legacy.WirelessService; ConnectionMode = 'wifi' }
+    Save-PhoneConfiguration $temporaryDirectory $wifiMode
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $temporaryDirectory 'launch.ps1')
+    $launchResult = Get-Content (Join-Path $temporaryDirectory 'launch-result.txt') -Raw
+    Assert-Condition ($launchResult.StartsWith('-s adb-TEST123-paired._adb-tls-connect._tcp ')) 'Explicit Wi-Fi mode chose an attached USB phone.'
+    Assert-Condition ((Get-PhoneConfiguration $temporaryDirectory).ConnectionMode -eq 'wifi') 'Connection mode was not persisted.'
+    Save-PhoneConfiguration $temporaryDirectory $legacy
     Set-Content (Join-Path $temporaryDirectory 'devices.txt') ''
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $temporaryDirectory 'launch.ps1')
     $launchResult = Get-Content (Join-Path $temporaryDirectory 'launch-result.txt') -Raw

@@ -49,6 +49,7 @@ process timeouts. Run them on Windows PowerShell 5.1:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\launcher.Tests.ps1
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\tests\setup-ui.Tests.ps1
 ```
 
 These tests use disposable fake ADB/client executables. They do not replace a
@@ -63,3 +64,15 @@ Automatic pairing requires an unambiguous advertisement; manual pairing and
 connection endpoints must share the phone IP and use different ports. Regression
 tests cover Wi-Fi-only discovery, manual setup, configuration persistence,
 ambiguous advertisements, and accidental reuse of the pairing port.
+
+## Connection modes and simpler startup
+
+- Setup offers USB, Wi-Fi, and USB + Wi-Fi (recommended) as separate modes.
+- USB mode hides pairing controls; Wi-Fi mode does not require a USB phone.
+  Combined mode verifies both connections and keeps automatic fallback.
+- Manual address fields are collapsed until requested.
+- `ConnectionMode` is saved in `phone.json` and respected on every launch.
+  Legacy settings infer automatic fallback when Wi-Fi was configured, or USB
+  otherwise. Existing settings do not need to be edited or recreated.
+- `Start.vbs` is the user-facing entry point. `launch.vbs` remains compatible
+  with existing shortcuts; neither file installs the application.

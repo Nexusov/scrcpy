@@ -31,8 +31,9 @@ try {
     }
 
     $env:SCRCPY_RECONNECT_SERIAL = $null
+    $connectionMode = Get-ConnectionMode -Configuration $configuration
 
-    if ($configuration.WirelessService) {
+    if ($connectionMode -ne 'usb') {
         try {
             $services = @(Get-PhoneWirelessServices -RootDirectory $PSScriptRoot -UsbSerial $configuration.UsbSerial)
 
@@ -47,12 +48,15 @@ try {
         $env:SCRCPY_RECONNECT_SERIAL = $configuration.WirelessService
     }
 
-    $devices = @(Get-SetupDevices -RootDirectory $PSScriptRoot)
-    $usbConnected = @($devices | Where-Object { $_.Serial -ceq $configuration.UsbSerial -and $_.State -eq 'device' }).Count
     $selectedSerial = $configuration.WirelessService
 
-    if ($usbConnected) {
-        $selectedSerial = $configuration.UsbSerial
+    if ($connectionMode -ne 'wifi') {
+        $devices = @(Get-SetupDevices -RootDirectory $PSScriptRoot)
+        $usbConnected = @($devices | Where-Object { $_.Serial -ceq $configuration.UsbSerial -and $_.State -eq 'device' }).Count
+
+        if ($usbConnected) {
+            $selectedSerial = $configuration.UsbSerial
+        }
     }
 
     if (-not $selectedSerial) {
