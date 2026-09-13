@@ -31,3 +31,26 @@ The following checks were completed:
 Recovery after physically disconnecting USB was also manually confirmed on a POCO
 phone running Android 16. Detailed local logs and device identifiers are excluded
 from Git.
+
+## First-run setup wizard
+
+- `launcher/setup.ps1` and `setup.vbs`: a Windows Forms wizard with USB device
+  selection, optional Wi-Fi pairing, manual address fallback, and USB-only mode.
+- `launcher/launcher-core.ps1`: bounded ADB commands, service discovery, device
+  identity checks, and atomic configuration writes. Pairing codes are not saved.
+- `launcher/launch.ps1`: opens setup for missing or invalid settings, reuses legacy
+  settings, preserves USB priority, and clears Wi-Fi reconnection in USB-only mode.
+- `scripts/package.ps1`: includes the wizard and shared helpers in portable ZIPs.
+
+Automated checks cover authorized/unauthorized devices, emulator/network device
+exclusion, incorrect pairing, wrong-device discovery and identity, manual fallback,
+legacy launch, USB priority, Wi-Fi launch, USB-only mode, cancellation, and ADB
+process timeouts. Run them on Windows PowerShell 5.1:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\launcher.Tests.ps1
+```
+
+These tests use disposable fake ADB/client executables. They do not replace a
+physical USB-disconnection test on an Android phone. The native reconnection
+client and its runtime DLLs are unchanged by the wizard update.

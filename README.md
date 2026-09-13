@@ -10,6 +10,8 @@ screen mirroring in the same window when switching from USB to Wi-Fi.
 - **Persistent window:** keeps the last frame visible and displays `Reconnecting...`
   in the title while waiting for the phone.
 - **Session recovery:** resumes video, audio, and device control in the same window.
+- **Guided setup:** detects your USB phone and configures Wi-Fi in a desktop wizard.
+- **USB-only mode:** start mirroring without setting up Wi-Fi.
 - **Quiet launcher:** starts without a separate console window.
 
 Closing the window stops reconnection attempts. Switching back from Wi-Fi to USB
@@ -27,11 +29,22 @@ These instructions apply to a prepared Windows x64 portable package. The source
 repository does not include the runtime binaries; see the [build guide](docs/BUILD.md)
 to build and package the application.
 
-1. Extract the portable package into a writable directory.
-2. Copy `phone.example.json` to `phone.json` and configure your device.
-3. Connect your phone over USB, enable **USB debugging**, and authorize your PC.
-4. Enable **Wireless debugging** and pair the phone with your PC for Wi-Fi fallback.
-5. Run `launch.vbs`.
+1. Extract the portable package into a writable directory and run `launch.vbs`.
+2. On your phone, enable **Developer options** and **USB debugging**. Connect it
+   by USB, unlock it, and accept the authorization prompt.
+3. In the setup window, click **Refresh** if necessary and select your phone.
+4. Choose **Use USB only** to start immediately, or configure Wi-Fi below.
+
+For automatic USB-to-Wi-Fi reconnection, keep the phone and PC on the same
+network. On the phone, enable **Wireless debugging** and open **Pair device with
+pairing code**. Enter the six-digit code in the wizard and click **Pair and finish**.
+The wizard detects the address when possible, verifies the Wi-Fi device, and
+saves the configuration. Mirroring starts after setup completes.
+
+No terminal commands or manual JSON editing are required. On subsequent launches,
+run `launch.vbs` or your shortcut. Existing valid settings are reused automatically.
+To change phones or enable Wi-Fi later, run `setup.vbs`, then restart mirroring.
+Cancelling setup leaves existing settings unchanged.
 
 ### Requirements
 
@@ -41,28 +54,32 @@ to build and package the application.
   requires Android 11 or later.
 - The phone and PC on the same network for Wi-Fi connectivity.
 
-### Device configuration
+### If automatic Wi-Fi discovery fails
 
-Run these commands from the portable package directory:
+Keep the pairing-code dialog open. Enter its **IP address and pairing port** in
+**Pairing IP:port**, then enter the current pairing code again.
 
-```powershell
-.\adb.exe devices
-.\adb.exe pair PHONE_IP:PAIRING_PORT
-.\adb.exe mdns services
-```
+If the paired phone still cannot be discovered, also enter **Connection IP:port**
+from the main **Wireless debugging** screen. The connection port is different
+from the pairing port. Both addresses must refer to the same phone IP. The wizard
+verifies the phone over Wi-Fi before saving anything.
 
-Enter the pairing code when `adb pair` prompts for it. In `phone.json`, set:
+Manual addresses must use IPv4, for example `192.168.1.10:37000`. A saved manual
+connection address may change when the phone reconnects to the network or
+Wireless debugging restarts; rerun `setup.vbs` if it stops working. Automatically
+discovered service names are refreshed when available.
 
-| Field | Value |
-| --- | --- |
-| `UsbSerial` | The USB serial number reported by `adb devices` |
-| `WirelessService` | The service name reported by `adb mdns services`, ending in `._adb-tls-connect._tcp` |
+### Settings and diagnostics
 
-When both USB and the Wi-Fi service are available, the launcher automatically
-refreshes the saved service name.
+The wizard creates `phone.json` in the application directory. Advanced users can
+still use `phone.example.json` as a reference: `UsbSerial` identifies the USB
+phone; `WirelessService` contains its discovered ADB service or a manual connection
+address. An empty `WirelessService` enables USB-only mode.
 
-Device settings and logs are excluded from Git. For troubleshooting, check
-`last-run.log` and `last-run-errors.log` in the application directory.
+Keep the application in a writable folder. Device settings and logs are excluded
+from release packages and Git. Check `last-run.log` and `last-run-errors.log` for
+launch errors. Setup errors appear directly in the wizard; pairing codes are not
+saved in the configuration.
 
 ## Limitations
 
@@ -82,7 +99,7 @@ Build tools and development headers are only required for building the applicati
 | Path | Purpose |
 | --- | --- |
 | `src/scrcpy/` | Complete scrcpy 4.0 source with reconnection changes |
-| `launcher/` | Launch scripts and an example device configuration |
+| `launcher/` | Launch scripts, setup wizard, and shared device configuration helpers |
 | `scripts/build.ps1` | Builds the client using separately installed tools |
 | `scripts/package.ps1` | Creates a portable archive without personal settings or logs |
 | `docs/BUILD.md` | Build and packaging instructions |

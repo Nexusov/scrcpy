@@ -1,61 +1,62 @@
 $ErrorActionPreference = 'Stop'
-$configurationPath = Join-Path $PSScriptRoot 'phone.json'
 $logPath = Join-Path $PSScriptRoot 'last-run.log'
 $errorLogPath = Join-Path $PSScriptRoot 'last-run-errors.log'
 $env:ADB = Join-Path $PSScriptRoot 'adb.exe'
 $env:ADB_MDNS_OPENSCREEN = '1'
-$serviceType = '_adb-tls-connect._tcp'
 
 try {
-    if (-not (Test-Path -LiteralPath $configurationPath)) {
-        throw 'Copy phone.example.json to phone.json and configure your phone before starting.'
-    }
+    . (Join-Path $PSScriptRoot 'launcher-core.ps1')
+    $configuration = Get-PhoneConfiguration -RootDirectory $PSScriptRoot
 
-    $configuration = Get-Content -LiteralPath $configurationPath -Raw | ConvertFrom-Json
-    $validConfiguration = $configuration.UsbSerial -match '^[A-Za-z0-9_-]+$' -and
-        $configuration.WirelessService -match '^adb-[A-Za-z0-9_-]+\._adb-tls-connect\._tcp$' -and
-        $configuration.UsbSerial -ne 'YOUR_USB_SERIAL'
+    if ($null -eq $configuration) {
+        $setupPath = Join-Path $PSScriptRoot 'setup.ps1'
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File $setupPath
 
-    if (-not $validConfiguration) {
-        throw 'Set UsbSerial and WirelessService in phone.json using the instructions in README.md.'
-    }
-
-    $servicePrefix = 'adb-' + $configuration.UsbSerial + '-'
-    Set-Content -LiteralPath $logPath -Value ('Started: ' + (Get-Date -Format o)) -Encoding UTF8
-    # ADB writes normal daemon startup messages to stderr on Windows PowerShell.
-    $ErrorActionPreference = 'Continue'
-    & $env:ADB start-server 2>&1 | Out-File -LiteralPath $logPath -Append -Encoding UTF8
-    $adbExitCode = $LASTEXITCODE
-    $ErrorActionPreference = 'Stop'
-
-    if ($adbExitCode -ne 0) {
-        throw "ADB startup failed with code $adbExitCode"
-    }
-    $services = & $env:ADB mdns services 2>$null
-
-    foreach ($serviceLine in $services) {
-        $serviceFields = $serviceLine.Trim() -split '\s+'
-        $isMatchingService = $serviceFields.Count -eq 3 -and
-            $serviceFields[0].StartsWith($servicePrefix) -and
-            $serviceFields[1] -eq $serviceType
-
-        if (-not $isMatchingService) {
-            continue
+        if ($LASTEXITCODE -ne 0) {
+            exit 0
         }
 
-        $configuration.WirelessService = $serviceFields[0] + '.' + $serviceType
-        $configuration | ConvertTo-Json | Set-Content -LiteralPath $configurationPath
-        break
+        $configuration = Get-PhoneConfiguration -RootDirectory $PSScriptRoot
+
+        if ($null -eq $configuration) {
+            throw 'Setup did not save a valid configuration. Run setup.vbs to try again.'
+        }
     }
 
-    $env:SCRCPY_RECONNECT_SERIAL = $configuration.WirelessService
-    $devices = & $env:ADB devices
-    $authorizedDevicePattern = '^' + [regex]::Escape($configuration.UsbSerial) + '\s+device\s*$'
-    $usbConnected = @($devices | Where-Object { $_ -match $authorizedDevicePattern }).Count
+    Set-Content -LiteralPath $logPath -Value ('Started: ' + (Get-Date -Format o)) -Encoding UTF8
+    $adbResult = Invoke-AdbCommand -RootDirectory $PSScriptRoot -Arguments @('start-server')
+
+    if ($adbResult.ExitCode -ne 0) {
+        throw 'ADB could not start. Check the application files and USB driver.'
+    }
+
+    $env:SCRCPY_RECONNECT_SERIAL = $null
+
+    if ($configuration.WirelessService) {
+        try {
+            $services = @(Get-PhoneWirelessServices -RootDirectory $PSScriptRoot -UsbSerial $configuration.UsbSerial)
+
+            if ($services.Count -eq 1) {
+                $configuration.WirelessService = $services[0].Name + '._adb-tls-connect._tcp'
+                Save-PhoneConfiguration -RootDirectory $PSScriptRoot -Configuration $configuration
+            }
+        } catch {
+            Add-Content -LiteralPath $logPath -Value 'Wireless discovery unavailable; using saved settings.'
+        }
+
+        $env:SCRCPY_RECONNECT_SERIAL = $configuration.WirelessService
+    }
+
+    $devices = @(Get-SetupDevices -RootDirectory $PSScriptRoot)
+    $usbConnected = @($devices | Where-Object { $_.Serial -ceq $configuration.UsbSerial -and $_.State -eq 'device' }).Count
     $selectedSerial = $configuration.WirelessService
 
     if ($usbConnected) {
         $selectedSerial = $configuration.UsbSerial
+    }
+
+    if (-not $selectedSerial) {
+        throw 'Connect and authorize your phone over USB, or run setup.vbs to enable Wi-Fi fallback.'
     }
 
     # The client reconnects internally and keeps its SDL window alive.
@@ -74,8 +75,8 @@ try {
         $outputCopy = $streamProcess.StandardOutput.BaseStream.CopyToAsync($outputFile)
         $errorCopy = $streamProcess.StandardError.BaseStream.CopyToAsync($errorFile)
         $streamProcess.WaitForExit()
-        $outputCopy.GetAwaiter().GetResult()
-        $errorCopy.GetAwaiter().GetResult()
+        $null = $outputCopy.GetAwaiter().GetResult()
+        $null = $errorCopy.GetAwaiter().GetResult()
     } finally {
         $outputFile.Dispose()
         $errorFile.Dispose()
