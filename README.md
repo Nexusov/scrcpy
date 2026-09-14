@@ -15,8 +15,6 @@ official [Genymobile](https://github.com/genymobile) release.
    inside the archive or extract it over an older package.
 3. Double-click **`Start.vbs`** and choose how to connect your phone in the setup
    wizard. Follow the instructions below for your preferred connection.
-4. Leave **Create a desktop shortcut** selected if you want a desktop launcher.
-   The shortcut is created after successful setup; an existing app shortcut is reused.
 
 Mirroring starts when setup finishes. After that, use **`Start.vbs`** or your
 shortcut to launch the app. No installation, terminal commands, or manual
