@@ -1,8 +1,9 @@
-﻿param([string]$ProjectRoot = (Split-Path $PSScriptRoot -Parent), [string]$PreviewDirectory = '')
+param([string]$ProjectRoot = (Split-Path $PSScriptRoot -Parent), [string]$PreviewDirectory = '')
 $ErrorActionPreference = 'Stop'
 $setupSource = [IO.File]::ReadAllText((Join-Path $ProjectRoot 'launcher\setup.ps1'))
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('scrcpy-ui-tests-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($testRoot)
+Copy-Item (Join-Path $ProjectRoot 'launcher/reset.ps1') $testRoot
 $mockCore = @'
 function Get-PhoneConfiguration { param($RootDirectory) return $null }
 function Get-ConnectionMode { param($Configuration) return $Configuration.ConnectionMode }

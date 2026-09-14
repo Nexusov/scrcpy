@@ -1,4 +1,4 @@
-﻿param([string]$PreviewDirectory = "")
+param([string]$PreviewDirectory = "")
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path $PSScriptRoot -Parent
 . (Join-Path $repository 'launcher/launcher-core.ps1')
@@ -53,6 +53,7 @@ Write-Output 'PASS: saved connection endpoint can refresh without pairing.'
 
 # Exercise production UI with its real core and no visible modal form.
 Copy-Item (Join-Path $repository 'launcher/launcher-core.ps1') $testDirectory
+Copy-Item (Join-Path $repository 'launcher/reset.ps1') $testDirectory
 [IO.File]::WriteAllText((Join-Path $testDirectory 'shortcut.ps1'), 'function New-DesktopShortcut { param($RootDirectory) Set-Content (Join-Path $RootDirectory "shortcut-created") yes }')
 $setupSource = [IO.File]::ReadAllText((Join-Path $repository 'launcher/setup.ps1'))
 $saved = [pscustomobject]@{ UsbSerial = 'phone123'; WirelessService = '192.168.1.8:40001'; ConnectionMode = 'wifi' }

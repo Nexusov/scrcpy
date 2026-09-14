@@ -10,10 +10,41 @@ $script:pendingWork = $null
 $script:setupSaved = $false
 $script:pairingState = [hashtable]::Synchronized(@{})
 . (Join-Path $script:setupRoot 'launcher-core.ps1')
+# Captures the exact saved state to detect edits from another settings window.
+function Get-SetupConfigurationSnapshot {
+    $path = Join-Path $script:setupRoot 'phone.json'
+
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $null
+    }
+
+    return [IO.File]::ReadAllText($path)
+}
+
+# Saves only if another window has not reset or replaced the configuration.
+function Save-SetupConfiguration {
+    param($Configuration)
+    . (Join-Path $script:setupRoot 'reset.ps1')
+    Invoke-DeviceConfigurationLock -RootDirectory $script:setupRoot -Action {
+        $currentSnapshot = Get-SetupConfigurationSnapshot
+
+        if ($currentSnapshot -cne $script:configurationSnapshot) {
+            throw 'Device settings changed in another window. Close and reopen Settings before saving.'
+        }
+
+        Save-PhoneConfiguration -RootDirectory $script:setupRoot -Configuration $Configuration
+        $script:configurationSnapshot = Get-SetupConfigurationSnapshot
+    }
+}
+$script:configurationSnapshot = Get-SetupConfigurationSnapshot
 $script:savedConfiguration = Get-PhoneConfiguration -RootDirectory $script:setupRoot
 
+if ((Get-SetupConfigurationSnapshot) -cne $script:configurationSnapshot) {
+    throw 'Device settings changed while opening this window. Open Settings again.'
+}
+
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'scrcpy Seamless - Device setup'
+$form.Text = 'scrcpy Seamless - Settings'
 $versionScript = Join-Path $script:setupRoot 'version.ps1'
 
 if (Test-Path -LiteralPath $versionScript) {
@@ -201,6 +232,13 @@ $changePhone.AutoSize = $true
 $manageButtons.Controls.AddRange(@($shortcutNow, $changePhone))
 $layout.Controls.Add($manageButtons, 0, $layout.RowCount)
 $layout.RowCount++
+$resetSetup = New-Object Windows.Forms.Button
+$resetSetup.Text = 'Reset device setup...'
+$resetSetup.AutoSize = $true
+$resetSetup.Anchor = 'Left'
+$resetSetup.Margin = New-Object Windows.Forms.Padding(3, 16, 3, 3)
+$layout.Controls.Add($resetSetup, 0, $layout.RowCount)
+$layout.RowCount++
 
 # Restores the saved identity without requiring the phone to be online.
 function Restore-SavedDevice {
@@ -344,7 +382,7 @@ function Update-SetupActions {
         $control.Visible = $needsWifi -and $manualAddresses.Checked
     }
 
-    foreach ($control in @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $createShortcut, $shortcutNow, $changePhone)) {
+    foreach ($control in @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $createShortcut, $shortcutNow, $changePhone, $resetSetup)) {
         $control.Enabled = $isIdle
     }
 }
@@ -424,7 +462,7 @@ function Complete-Setup {
     if ($values.Mode -ne 'usb' -and (Test-SavedWifiSelection)) {
         try {
             $configuration = [pscustomobject]@{ UsbSerial = $values.Serial; WirelessService = $script:savedConfiguration.WirelessService; ConnectionMode = $values.Mode }
-            Save-PhoneConfiguration -RootDirectory $script:setupRoot -Configuration $configuration
+            Save-SetupConfiguration -Configuration $configuration
             $script:setupSaved = $true
             Complete-ShortcutSetup
             $form.DialogResult = 'OK'
@@ -474,7 +512,7 @@ $timer.Add_Tick({
         }
 
         if ($pending.Operation -ne 'devices') {
-            Save-PhoneConfiguration -RootDirectory $script:setupRoot -Configuration $result[0]
+            Save-SetupConfiguration -Configuration $result[0]
             $script:setupSaved = $true
             return
         }
@@ -577,6 +615,41 @@ $changePhone.Add_Click({
     $connectionEndpoint.Clear()
     Start-SetupWork -Operation 'devices'
 })
+# Clears saved and pending device setup while retaining unrelated application data.
+function Reset-SetupState {
+
+    if ($null -ne $script:pendingWork) {
+        return
+    }
+
+    try {
+        . (Join-Path $script:setupRoot 'reset.ps1')
+        Assert-DeviceResetAvailable -RootDirectory $script:setupRoot
+        $confirmation = [Windows.Forms.MessageBox]::Show($form, 'Remove the saved phone and connection settings? The next launch will require setup. Desktop shortcuts, logs, and phone pairing will remain. To forget this PC on the phone, open Wireless debugging > Paired devices > select this PC > Forget.', 'Reset device setup', 'YesNo', 'Warning', 'Button2')
+
+        if ($confirmation -ne 'Yes') {
+            return
+        }
+
+        [void](Reset-DeviceConfiguration -RootDirectory $script:setupRoot -Confirmed $true)
+        $script:configurationSnapshot = $null
+        $script:savedConfiguration = $null
+        $script:setupSaved = $false
+        $script:pairingState.Clear()
+        $devices.Items.Clear()
+        $pairingCode.Clear()
+        $endpoint.Clear()
+        $connectionEndpoint.Clear()
+        $manualAddresses.Checked = $false
+        $mode.SelectedIndex = 0
+        Update-SetupActions
+        $status.Text = 'Device setup was reset. Choose a connection mode to set up your phone again. Phone pairing, logs, and desktop shortcuts were kept.'
+    }
+    catch {
+        $status.Text = 'Device setup could not be reset: ' + $_.Exception.Message
+    }
+}
+$resetSetup.Add_Click({ Reset-SetupState })
 $cancel.Add_Click({ $form.Close() })
 $form.Add_FormClosing({
     param($sender, $eventArguments)

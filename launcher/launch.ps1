@@ -59,6 +59,42 @@ function Start-LauncherSetup {
     $script:setupButton.Enabled = $false
 }
 
+# Reject stale probe results after settings are changed or reset in another window.
+function Start-VerifiedMirroringProcess {
+    param($Target)
+    Invoke-DeviceConfigurationLock -RootDirectory $PSScriptRoot -Action {
+        $configuration = Get-PhoneConfiguration -RootDirectory $PSScriptRoot
+
+        if ($null -eq $configuration) {
+            $script:session.Configuration = $null
+            $script:session.Paused = $true
+            $script:statusLabel.Text = 'Device setup was reset. Complete Settings, then retry.'
+            $script:retryButton.Enabled = $true
+            $script:setupButton.Enabled = $true
+            $script:session.Progress.Status = ''
+            return
+        }
+
+        $previousConfiguration = $script:session.Configuration
+        $configurationChanged = $null -eq $previousConfiguration -or
+            $configuration.UsbSerial -cne $previousConfiguration.UsbSerial -or
+            $configuration.WirelessService -cne $previousConfiguration.WirelessService -or
+            (Get-ConnectionMode -Configuration $configuration) -ne (Get-ConnectionMode -Configuration $previousConfiguration)
+
+        if ($configurationChanged) {
+            $script:session.Configuration = $configuration
+            $script:session.Progress.Status = ''
+            $script:session.Started = [DateTime]::UtcNow
+            $script:session.NextProbe = [DateTime]::MinValue
+            $script:hintLabel.Text = Get-ConnectionHint -Mode (Get-ConnectionMode -Configuration $configuration)
+            return
+        }
+
+        if ($null -ne $Target) {
+            Start-MirroringProcess -Target $Target
+        }
+    }
+}
 # Start exactly one native session and copy its logs without blocking the UI.
 function Start-MirroringProcess {
     param($Target)
@@ -171,7 +207,7 @@ function Update-LauncherSession {
         $script:session.Progress.Status = ''
 
         if ($null -eq $script:session.Configuration) {
-            throw 'Setup did not save a valid configuration. Run Setup.vbs to try again.'
+            throw 'Setup did not save a valid configuration. Run Settings.vbs to try again.'
         }
 
         $script:hintLabel.Text = Get-ConnectionHint -Mode (Get-ConnectionMode -Configuration $script:session.Configuration)
@@ -235,8 +271,8 @@ function Update-LauncherSession {
             $script:session.NextProbe = [DateTime]::UtcNow.AddSeconds(2)
         }
 
-        if ($targets.Count -and -not $script:session.SetupRequested) {
-            Start-MirroringProcess -Target $targets[0]
+        if (-not $script:session.SetupRequested) {
+            Start-VerifiedMirroringProcess -Target ($targets | Select-Object -First 1)
             return
         }
     }
@@ -281,6 +317,7 @@ try {
     . (Join-Path $PSScriptRoot 'launcher-core.ps1')
     . (Join-Path $PSScriptRoot 'connection-core.ps1')
     . (Join-Path $PSScriptRoot 'instance.ps1')
+    . (Join-Path $PSScriptRoot 'reset.ps1')
     . (Join-Path $PSScriptRoot 'version.ps1')
     $instance = Enter-LauncherInstance
 
@@ -328,7 +365,7 @@ try {
     $script:retryButton.Location = New-Object Drawing.Point(200, 165)
     $script:retryButton.Size = New-Object Drawing.Size(105, 32)
     $script:setupButton = New-Object Windows.Forms.Button
-    $script:setupButton.Text = 'Setup'
+    $script:setupButton.Text = 'Settings'
     $script:setupButton.Location = New-Object Drawing.Point(315, 165)
     $script:setupButton.Size = New-Object Drawing.Size(105, 32)
     $cancelButton = New-Object Windows.Forms.Button
@@ -349,6 +386,16 @@ try {
     $script:form.Controls.AddRange(@($script:statusLabel, $script:hintLabel, $script:retryButton, $script:setupButton, $cancelButton, $logsButton))
     $script:form.CancelButton = $cancelButton
     $script:retryButton.Add_Click({
+        $configuration = Get-PhoneConfiguration -RootDirectory $PSScriptRoot
+
+        if ($null -eq $configuration) {
+            $script:session.Paused = $true
+            $script:statusLabel.Text = 'Complete Settings, then retry.'
+            return
+        }
+
+        $script:session.Configuration = $configuration
+        $script:hintLabel.Text = Get-ConnectionHint -Mode (Get-ConnectionMode -Configuration $configuration)
         $script:session.Paused = $false
         $script:session.NextProbe = [DateTime]::MinValue
         $script:session.Started = [DateTime]::UtcNow
@@ -359,7 +406,7 @@ try {
         $script:session.SetupRequested = $true
         $script:setupButton.Enabled = $false
         $script:retryButton.Enabled = $false
-        $script:statusLabel.Text = 'Finishing the current check before opening setup...'
+        $script:statusLabel.Text = 'Finishing the current check before opening settings...'
     })
     $cancelButton.Add_Click({ $script:form.Close() })
     $script:form.Add_FormClosing({
@@ -387,7 +434,7 @@ try {
             if ($null -eq $script:session.NativeProcess) {
                 Close-MirroringResources
             }
-            $script:statusLabel.Text = 'Could not start mirroring. Check last-run.log and try Setup.'
+            $script:statusLabel.Text = 'Could not start mirroring. Check last-run.log and try Settings.'
             Add-Content -LiteralPath $logPath -Value $_.Exception.Message
         }
     })

@@ -41,13 +41,13 @@ foreach ($runtimeFile in $runtimeFiles) {
     Copy-Item -LiteralPath (Join-Path $RuntimeDirectory $runtimeFile) -Destination $applicationDirectory
 }
 
-foreach ($launcherFile in @('launch.ps1', 'launch.vbs', 'launcher-core.ps1', 'connection-core.ps1', 'instance.ps1', 'version.ps1', 'shortcut.ps1', 'setup.ps1', 'setup.vbs', 'phone.example.json')) {
+foreach ($launcherFile in @('launch.ps1', 'launch.vbs', 'launcher-core.ps1', 'connection-core.ps1', 'instance.ps1', 'version.ps1', 'shortcut.ps1', 'reset.ps1', 'setup.ps1', 'setup.vbs', 'phone.example.json')) {
     Copy-Item -LiteralPath (Join-Path $repositoryDirectory ('launcher\' + $launcherFile)) -Destination $applicationDirectory
 }
 
 # Keep only the public entry points beside the user documentation.
 Copy-Item -LiteralPath (Join-Path $repositoryDirectory 'launcher\Start.vbs') -Destination $stagingDirectory
-Copy-Item -LiteralPath (Join-Path $repositoryDirectory 'launcher\setup.vbs') -Destination (Join-Path $stagingDirectory 'Setup.vbs')
+Copy-Item -LiteralPath (Join-Path $repositoryDirectory 'launcher\Settings.vbs') -Destination (Join-Path $stagingDirectory 'Settings.vbs')
 
 foreach ($documentFile in @('LICENSE', 'README.md', 'THIRD_PARTY.md')) {
     $document = Get-Content -LiteralPath (Join-Path $repositoryDirectory $documentFile) -Raw -Encoding UTF8

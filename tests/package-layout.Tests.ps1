@@ -17,7 +17,7 @@ function Assert-Layout { param($Condition, [string]$Message)
 Expand-Archive -LiteralPath $ArchivePath -DestinationPath (Join-Path $testDirectory 'package')
 $packageDirectory = Join-Path $testDirectory 'package'
 $rootNames = @(Get-ChildItem -LiteralPath $packageDirectory | Select-Object -ExpandProperty Name | Sort-Object)
-Assert-Layout (($rootNames -join '|') -eq 'app|LICENSE|README.md|Setup.vbs|Start.vbs|THIRD_PARTY.md') 'Unexpected public package entries.'
+Assert-Layout (($rootNames -join '|') -eq 'app|LICENSE|README.md|Settings.vbs|Start.vbs|THIRD_PARTY.md') 'Unexpected public package entries.'
 Assert-Layout (-not (Get-ChildItem $packageDirectory -Recurse -File | Where-Object { $_.Name -eq 'phone.json' -or $_.Extension -eq '.log' })) 'Private files in ZIP.'
 $expectedHash = ((Get-Content ($ArchivePath + '.sha256') -Raw).Trim() -split '\s+')[0]
 Assert-Layout ((Get-FileHash $ArchivePath).Hash -eq $expectedHash) 'Checksum mismatch.'
@@ -40,23 +40,36 @@ foreach ($layout in @('flat','nested')) {
         $runtimeDirectory = Join-Path $publicDirectory 'app'
     }
     New-Item -ItemType Directory $runtimeDirectory -Force | Out-Null
-    Copy-Item (Join-Path $repositoryDirectory 'launcher\Start.vbs'),(Join-Path $repositoryDirectory 'launcher\setup.vbs') $publicDirectory
+    Copy-Item (Join-Path $repositoryDirectory 'launcher\Start.vbs'),(Join-Path $repositoryDirectory 'launcher\setup.vbs'),(Join-Path $repositoryDirectory 'launcher\Settings.vbs') $publicDirectory
     Copy-Item (Join-Path $repositoryDirectory 'launcher\launch.vbs') $runtimeDirectory
     foreach ($scriptName in @('launch','setup')) {
         Set-Content (Join-Path $runtimeDirectory ($scriptName + '.ps1')) -Value ('Set-Content -LiteralPath (Join-Path $PSScriptRoot "' + $scriptName + '.ok") -Value "ok"')
     }
     $shell = New-Object -ComObject WScript.Shell
-    foreach ($entry in @('Start.vbs','setup.vbs')) {
-        [void]$shell.Run(('wscript.exe "' + (Join-Path $publicDirectory $entry) + '"'), 0, $true)
-    }
     $launchTimeoutSeconds = 10
     $pollIntervalMilliseconds = 100
-    $deadline = [DateTime]::UtcNow.AddSeconds($launchTimeoutSeconds)
-    while ([DateTime]::UtcNow -lt $deadline -and -not ((Test-Path (Join-Path $runtimeDirectory 'launch.ok')) -and (Test-Path (Join-Path $runtimeDirectory 'setup.ok')))) {
-        Start-Sleep -Milliseconds $pollIntervalMilliseconds
+    foreach ($entry in @('Start.vbs','Settings.vbs','setup.vbs')) {
+        $markerName = 'setup.ok'
+
+        if ($entry -eq 'Start.vbs') {
+            $markerName = 'launch.ok'
+        }
+
+        $markerPath = Join-Path $runtimeDirectory $markerName
+
+        if (Test-Path -LiteralPath $markerPath) {
+            Remove-Item -LiteralPath $markerPath
+        }
+
+        [void]$shell.Run(('wscript.exe "' + (Join-Path $publicDirectory $entry) + '"'), 0, $true)
+        $deadline = [DateTime]::UtcNow.AddSeconds($launchTimeoutSeconds)
+
+        while ([DateTime]::UtcNow -lt $deadline -and -not (Test-Path -LiteralPath $markerPath)) {
+            Start-Sleep -Milliseconds $pollIntervalMilliseconds
+        }
+
+        Assert-Layout (Test-Path -LiteralPath $markerPath) "$layout $entry wrapper failed."
     }
-    Assert-Layout (Test-Path (Join-Path $runtimeDirectory 'launch.ok')) "$layout Start wrapper failed."
-    Assert-Layout (Test-Path (Join-Path $runtimeDirectory 'setup.ok')) "$layout Setup wrapper failed."
     $desktopDirectory = Join-Path $publicDirectory 'fake desktop'
     New-Item -ItemType Directory $desktopDirectory | Out-Null
     Set-Content (Join-Path $runtimeDirectory 'scrcpy.exe') 'test icon sentinel'

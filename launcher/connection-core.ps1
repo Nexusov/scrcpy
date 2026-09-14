@@ -138,7 +138,7 @@ function Find-ReadyPhone {
     $identity = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('-s', $wirelessTarget, 'shell', 'getprop', 'ro.serialno') -TimeoutMilliseconds $probeTimeoutMilliseconds
 
     if ($identity.ExitCode -ne 0 -or $identity.Output.Trim() -cne $Configuration.UsbSerial) {
-        $Progress.Status = 'Could not verify the saved phone. Check your device in Setup.'
+        $Progress.Status = 'Could not verify the saved phone. Check your device in Settings.'
         return $null
     }
 

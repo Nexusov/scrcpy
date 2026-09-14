@@ -22,20 +22,31 @@ Mirroring starts when setup finishes. After that, use **`Start.vbs`** or your
 shortcut to launch the app. No installation, terminal commands, or manual
 configuration files are needed. Keep all extracted files together.
 
-The ZIP contains `Start.vbs`, `Setup.vbs`, this README, `LICENSE`, and
+The ZIP contains `Start.vbs`, `Settings.vbs`, this README, `LICENSE`, and
 `THIRD_PARTY.md` at the top level. Everything needed to run the app is inside
 `app/`; do not move its files out individually. You can move the whole extracted
-folder, then open setup and use **Create shortcut now** to update your desktop shortcut.
+folder, then open Settings and use **Create shortcut now** to update your desktop shortcut.
 
-To change the connection mode or phone later, run **`Setup.vbs`**, then restart
+To change the connection mode or phone later, run **`Settings.vbs`**, then restart
 mirroring. Cancelling setup keeps your previous settings. Existing `launch.vbs`
-shortcuts continue to work.
+shortcuts continue to work. Existing installations also retain `Setup.vbs` as a compatible entry point.
 
-Setup loads your saved phone and connection mode. You can save changes without
+Settings loads your saved phone and connection mode. You can save changes without
 repeating Wi-Fi pairing when a saved Wi-Fi configuration is available. Use
 **Set up another phone** to configure another device. If the phone has forgotten this PC,
 pair it again. Creating a shortcut does not require the phone to be connected.
 
+## Reset device settings
+
+Open **`Settings.vbs`** and choose **Reset device setup...** to remove the saved
+phone and connection configuration. Close any running mirroring window first,
+then confirm the reset. You can configure a phone again immediately or on the
+next launch. If a connection window is already waiting, finish saving your new settings, then click **Retry now** in that window.
+
+Reset keeps your desktop shortcut, logs, and shared ADB keys. It does not remove
+pairing from the phone or affect other ADB applications. To forget this PC on the
+phone as well, open **Wireless debugging > Paired devices**, select the PC, and
+choose **Forget**.
 ## Connecting to your phone
 
 A connection window appears immediately when you start the app. It shows what
@@ -44,14 +55,14 @@ a shared network. After ten seconds, the status changes to **Still waiting for
 your phone** while connection attempts continue automatically.
 
 - **Retry now** requests another check without creating another mirroring session.
-- **Setup** opens the device wizard to change your connection settings.
+- **Settings** opens the device wizard to change your connection settings.
 - **Cancel** stops waiting. When the setup wizard is open, use its Cancel button.
 - **Open logs** opens the diagnostics folder for troubleshooting.
 
 Clicking the launcher again brings the existing connection, setup, or mirroring
 window forward instead of opening another session. The connection window remains
 visible until the phone's mirroring window opens. If that window cannot open,
-check the error log and click **Retry now** or **Setup**.
+check the error log and click **Retry now** or **Settings**.
 
 Connection status reports the current check, including USB authorization and
 Wi-Fi discovery. If the native process starts but its window does not appear
@@ -131,7 +142,7 @@ phone is not undone by cancellation.
 **A saved connection stops working:** ensure Wireless debugging is still enabled
 and both devices are on the same network. A manually entered connection address
 can change after a network change or restart of Wireless debugging. Run
-`Setup.vbs` again to update it. Pair again if the phone has forgotten the PC.
+`Settings.vbs` again to update it. Pair again if the phone has forgotten the PC.
 
 For other launch errors, check `last-run.log` and `last-run-errors.log` in the
 `app/` folder (beside the launcher scripts in older flat installations). Setup errors appear in the wizard. Your device settings are
