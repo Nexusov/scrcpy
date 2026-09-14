@@ -11,8 +11,8 @@ official [Genymobile](https://github.com/genymobile) release.
 1. Open the [latest release](https://github.com/Nexusov/scrcpy/releases/latest) and
    download **`scrcpy-seamless-win64.zip`**. The dependency source archive and
    GitHub's **Source code** downloads are not needed to run the app.
-2. Extract the ZIP into a folder where you can save files. Do not run it inside
-   the archive.
+2. Extract the ZIP into an empty folder where you can save files. Do not run it
+   inside the archive or extract it over an older package.
 3. Double-click **`Start.vbs`** and choose how to connect your phone in the setup
    wizard. Follow the instructions below for your preferred connection.
 4. Leave **Create a desktop shortcut** selected if you want a desktop launcher.
@@ -25,11 +25,16 @@ configuration files are needed. Keep all extracted files together.
 The ZIP contains `Start.vbs`, `Setup.vbs`, this README, `LICENSE`, and
 `THIRD_PARTY.md` at the top level. Everything needed to run the app is inside
 `app/`; do not move its files out individually. You can move the whole extracted
-folder, then rerun setup to update an existing desktop shortcut.
+folder, then open setup and use **Create shortcut now** to update your desktop shortcut.
 
 To change the connection mode or phone later, run **`Setup.vbs`**, then restart
 mirroring. Cancelling setup keeps your previous settings. Existing `launch.vbs`
 shortcuts continue to work.
+
+Setup loads your saved phone and connection mode. You can save changes without
+repeating Wi-Fi pairing when a saved Wi-Fi configuration is available. Use
+**Set up another phone** to configure another device. If the phone has forgotten this PC,
+pair it again. Creating a shortcut does not require the phone to be connected.
 
 ## Connecting to your phone
 
@@ -41,11 +46,17 @@ your phone** while connection attempts continue automatically.
 - **Retry now** requests another check without creating another mirroring session.
 - **Setup** opens the device wizard to change your connection settings.
 - **Cancel** stops waiting. When the setup wizard is open, use its Cancel button.
+- **Open logs** opens the diagnostics folder for troubleshooting.
 
 Clicking the launcher again brings the existing connection, setup, or mirroring
 window forward instead of opening another session. The connection window remains
 visible until the phone's mirroring window opens. If that window cannot open,
 check the error log and click **Retry now** or **Setup**.
+
+Connection status reports the current check, including USB authorization and
+Wi-Fi discovery. If the native process starts but its window does not appear
+within 30 seconds, the app stops that attempt and offers a retry. This timeout
+does not limit how long the app can wait for your phone to become available.
 
 ## Choose a connection
 
@@ -112,6 +123,11 @@ main **Wireless debugging** screen. This is a different port from the pairing
 port. Both addresses must belong to the same phone. For example, an address looks
 like `192.168.1.10:37000`; use the actual values shown on your phone.
 
+If pairing has already succeeded in the current setup session, retry the
+connection without entering another pairing code. Cancelling stops the current
+check and keeps the previous saved settings. Pairing already completed on the
+phone is not undone by cancellation.
+
 **A saved connection stops working:** ensure Wireless debugging is still enabled
 and both devices are on the same network. A manually entered connection address
 can change after a network change or restart of Wireless debugging. Run
@@ -121,6 +137,13 @@ For other launch errors, check `last-run.log` and `last-run-errors.log` in the
 `app/` folder (beside the launcher scripts in older flat installations). Setup errors appear in the wizard. Your device settings are
 stored locally in `app/phone.json` (beside the launcher scripts in older flat installations); pairing codes are not saved. Release archives do
 not contain personal device settings or logs.
+
+## Release and build identification
+
+The release remains **v1.0.0**. The setup window and launch log also show a build
+identifier, such as **20260914.1**, to distinguish updated packages within that
+release. Include this identifier when reporting a problem. ZIP filenames remain
+unchanged; replace the portable ZIP and its matching SHA-256 file together.
 
 ## Limitations
 
@@ -145,4 +168,5 @@ This software uses FFmpeg libraries under LGPL-2.1-or-later. Corresponding
 [dependency sources](https://github.com/Nexusov/scrcpy/releases/latest) are provided
 alongside the portable download. Third-party license notices are included in
 `app/licenses/` in the portable package (`licenses/` in the source repository).
+
 

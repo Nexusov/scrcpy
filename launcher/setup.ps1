@@ -8,9 +8,18 @@ Add-Type -AssemblyName System.Drawing
 $script:setupRoot = [System.IO.Path]::GetFullPath($RootDirectory)
 $script:pendingWork = $null
 $script:setupSaved = $false
+$script:pairingState = [hashtable]::Synchronized(@{})
+. (Join-Path $script:setupRoot 'launcher-core.ps1')
+$script:savedConfiguration = Get-PhoneConfiguration -RootDirectory $script:setupRoot
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'scrcpy Seamless - Device setup'
+$versionScript = Join-Path $script:setupRoot 'version.ps1'
+
+if (Test-Path -LiteralPath $versionScript) {
+    . $versionScript
+    $form.Text += ' - ' + (Get-SeamlessVersion)
+}
 $form.StartPosition = 'CenterScreen'
 $form.ClientSize = New-Object System.Drawing.Size(700, 610)
 $form.MinimumSize = New-Object System.Drawing.Size(620, 580)
@@ -180,6 +189,37 @@ $layout.Controls.Add($createShortcut, 0, $buttonRow)
 $layout.RowCount = $buttonRow + 2
 [void]$layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('AutoSize')))
 
+$manageButtons = New-Object Windows.Forms.FlowLayoutPanel
+$manageButtons.AutoSize = $true
+$manageButtons.Dock = 'Fill'
+$shortcutNow = New-Object Windows.Forms.Button
+$shortcutNow.Text = 'Create shortcut now'
+$shortcutNow.AutoSize = $true
+$changePhone = New-Object Windows.Forms.Button
+$changePhone.Text = 'Set up another phone'
+$changePhone.AutoSize = $true
+$manageButtons.Controls.AddRange(@($shortcutNow, $changePhone))
+$layout.Controls.Add($manageButtons, 0, $layout.RowCount)
+$layout.RowCount++
+
+# Restores the saved identity without requiring the phone to be online.
+function Restore-SavedDevice {
+
+    if (-not $script:savedConfiguration) {
+        return
+    }
+
+    $savedSerial = $script:savedConfiguration.UsbSerial
+    $savedItem = @($devices.Items | Where-Object { $_.Serial -eq $savedSerial })
+
+    if (-not $savedItem.Count) {
+        $savedItem = @([pscustomobject]@{ Serial = $savedSerial; Label = "Saved phone ($savedSerial)" })
+        [void]$devices.Items.Add($savedItem[0])
+    }
+
+    $devices.SelectedItem = $savedItem[0]
+}
+
 # Creates the optional shortcut only after settings have been saved successfully.
 function Complete-ShortcutSetup {
 
@@ -200,7 +240,7 @@ function Complete-ShortcutSetup {
 function Show-ShortcutWarning {
     [void][Windows.Forms.MessageBox]::Show($form, 'Device setup was saved, but the desktop shortcut could not be created. You can still launch the application from start.vbs in its folder.', 'scrcpy Seamless - Shortcut', 'OK', 'Warning')
 }
-# Runs ADB and configuration writes away from the Windows Forms thread.
+# Runs cancellable ADB operations away from the Windows Forms thread.
 function Start-SetupWork {
     param([string]$Operation, [hashtable]$Values = @{})
 
@@ -208,32 +248,42 @@ function Start-SetupWork {
         return
     }
 
+    $cancellation = New-Object Threading.CancellationTokenSource
     $worker = [powershell]::Create()
     [void]$worker.AddScript({
-        param($Directory, $Action, $InputValues)
+        param($Directory, $Action, $InputValues, $Cancellation, $PairingState)
         $ErrorActionPreference = 'Stop'
         . (Join-Path $Directory 'launcher-core.ps1')
+        $script:setupCancellation = $Cancellation
 
         if ($Action -eq 'devices') {
             return @(Get-SetupDevices -RootDirectory $Directory)
         }
 
         if ($Action -eq 'pair') {
-            $configuration = Complete-WirelessPairing -RootDirectory $Directory -UsbSerial $InputValues.Serial -PairingCode $InputValues.Code -Endpoint $InputValues.Endpoint -ConnectionEndpoint $InputValues.ConnectionEndpoint
+
+            if ($InputValues.ReuseExisting) {
+                $PairingState = @{ Endpoint = $InputValues.ConnectionEndpoint; Serial = $InputValues.Serial; Existing = $true }
+            }
+
+            $configuration = Complete-WirelessPairing -RootDirectory $Directory -UsbSerial $InputValues.Serial -PairingCode $InputValues.Code -Endpoint $InputValues.Endpoint -ConnectionEndpoint $InputValues.ConnectionEndpoint -PairingState $PairingState
             $configuration | Add-Member -NotePropertyName ConnectionMode -NotePropertyValue $InputValues.Mode -Force
-            Save-PhoneConfiguration -RootDirectory $Directory -Configuration $configuration
-            return
+            return $configuration
         }
 
         $configuration = [pscustomobject]@{ UsbSerial = $InputValues.Serial; WirelessService = ''; ConnectionMode = 'usb' }
-        Save-PhoneConfiguration -RootDirectory $Directory -Configuration $configuration
-    }).AddArgument($script:setupRoot).AddArgument($Operation).AddArgument($Values)
-    $script:pendingWork = @{ Worker = $worker; Handle = $worker.BeginInvoke(); Operation = $Operation }
+        return $configuration
+    }).AddArgument($script:setupRoot).AddArgument($Operation).AddArgument($Values).AddArgument($cancellation).AddArgument($script:pairingState)
+    $script:pendingWork = @{ Worker = $worker; Handle = $worker.BeginInvoke(); Operation = $Operation; Cancellation = $cancellation }
     Update-SetupActions
     $status.Text = 'Checking USB devices...'
 
     if ($Operation -eq 'pair') {
         $status.Text = 'Working... Keep your phone on the same Wi-Fi network and its pairing dialog open. This can take a moment.'
+    }
+
+    if ($Operation -eq 'pair' -and ($script:pairingState.Endpoint -or $Values.ReuseExisting)) {
+        $status.Text = 'Pairing is available. Connecting and verifying your phone... Keep Wireless debugging enabled and both devices on the same network.'
     }
 
     if ($Operation -eq 'usb') {
@@ -244,16 +294,38 @@ function Start-SetupWork {
 # Reflects the selected transport mode without requiring hidden inputs.
 function Update-SetupActions {
     $connectionMode = $mode.SelectedItem.Value
+    $wifiInstructions.Text = 'Wi-Fi: connect both devices to the same network. On the phone (Android 11+), open Wireless debugging > Pair device with pairing code.'
+    $pairingRow.GetControlFromPosition(0, 0).Text = 'Pairing code (6 digits)'
+
+    if ($script:savedConfiguration -and $script:savedConfiguration.WirelessService) {
+        $wifiInstructions.Text = 'Your saved pairing can be reused. Keep Wireless debugging enabled and both devices on the same network. Enter a new code only if the phone has forgotten this PC. To replace the phone, use Set up another phone.'
+        $pairingRow.GetControlFromPosition(0, 0).Text = 'New pairing code (optional)'
+    }
+
     $isIdle = $null -eq $script:pendingWork
     $needsUsb = $connectionMode -ne 'wifi'
     $needsWifi = $connectionMode -ne 'usb'
     $hasUsbDevice = $null -ne $devices.SelectedItem
+    $canReuseWifi = Test-SavedWifiSelection
     $hasPairingCode = $pairingCode.Text -match '^\d{6}$'
     $usbReady = -not $needsUsb -or $hasUsbDevice
-    $wifiReady = -not $needsWifi -or $hasPairingCode
+    $canRefreshConnection = $script:savedConfiguration -and $manualAddresses.Checked -and (Test-PairingEndpoint -Endpoint $connectionEndpoint.Text.Trim())
+    $wifiReady = -not $needsWifi -or $hasPairingCode -or $canReuseWifi -or $script:pairingState.Endpoint -or $canRefreshConnection
     $canFinish = $isIdle -and $usbReady -and $wifiReady
     $finish.Enabled = $canFinish
     $finish.Text = 'Pair and finish'
+
+    if ($canReuseWifi) {
+        $finish.Text = 'Save settings'
+    }
+
+    if ($canRefreshConnection -and -not $hasPairingCode) {
+        $finish.Text = 'Verify and save'
+    }
+
+    if ($script:pairingState.Endpoint) {
+        $finish.Text = 'Retry connection'
+    }
 
     if (-not $needsWifi) {
         $finish.Text = 'Save USB setup'
@@ -272,13 +344,18 @@ function Update-SetupActions {
         $control.Visible = $needsWifi -and $manualAddresses.Checked
     }
 
-    foreach ($control in @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $createShortcut, $cancel)) {
+    foreach ($control in @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $createShortcut, $shortcutNow, $changePhone)) {
         $control.Enabled = $isIdle
     }
 }
 
 # Explains the current mode when the user changes setup options.
 function Update-SetupStatus {
+    if ($script:savedConfiguration) {
+        $status.Text = 'Saved phone: ' + $script:savedConfiguration.UsbSerial + '. Save to keep its pairing, or enter a new code to pair again. Set up another phone replaces settings only after saving.'
+        return
+    }
+
     $status.Text = 'Select an authorized USB phone and enter its Wi-Fi pairing code. USB + Wi-Fi requires both connections.'
 
     if ($mode.SelectedItem.Value -eq 'usb') {
@@ -296,6 +373,10 @@ function Get-SetupInput {
     $connectionMode = $mode.SelectedItem.Value
     $serial = ''
 
+    if ($script:savedConfiguration) {
+        $serial = $script:savedConfiguration.UsbSerial
+    }
+
     if ($connectionMode -ne 'wifi' -and $null -ne $devices.SelectedItem) {
         $serial = $devices.SelectedItem.Serial
     }
@@ -308,7 +389,26 @@ function Get-SetupInput {
         $connectionAddress = $connectionEndpoint.Text.Trim()
     }
 
-    return @{ Serial = $serial; Code = $pairingCode.Text; Mode = $connectionMode; Endpoint = $pairingAddress; ConnectionEndpoint = $connectionAddress }
+    $reuseExisting = $script:savedConfiguration -and -not $pairingCode.Text -and [bool]$connectionAddress
+    return @{ ReuseExisting = $reuseExisting; Serial = $serial; Code = $pairingCode.Text; Mode = $connectionMode; Endpoint = $pairingAddress; ConnectionEndpoint = $connectionAddress }
+}
+
+# Reuses credentials only when the selected phone is the saved phone.
+function Test-SavedWifiSelection {
+
+    if (-not $script:savedConfiguration -or -not $script:savedConfiguration.WirelessService) {
+        return $false
+    }
+
+    if ($pairingCode.Text -or $script:pairingState.Endpoint -or $manualAddresses.Checked) {
+        return $false
+    }
+
+    if ($mode.SelectedItem.Value -eq 'wifi') {
+        return $true
+    }
+
+    return $devices.SelectedItem -and $devices.SelectedItem.Serial -eq $script:savedConfiguration.UsbSerial
 }
 
 # Starts the single finish action for the selected transport mode.
@@ -320,6 +420,20 @@ function Complete-Setup {
     }
 
     $values = Get-SetupInput
+
+    if ($values.Mode -ne 'usb' -and (Test-SavedWifiSelection)) {
+        try {
+            $configuration = [pscustomobject]@{ UsbSerial = $values.Serial; WirelessService = $script:savedConfiguration.WirelessService; ConnectionMode = $values.Mode }
+            Save-PhoneConfiguration -RootDirectory $script:setupRoot -Configuration $configuration
+            $script:setupSaved = $true
+            Complete-ShortcutSetup
+            $form.DialogResult = 'OK'
+            $form.Close()
+        } catch {
+            $status.Text = 'Settings could not be saved: ' + $_.Exception.Message
+        }
+        return
+    }
 
     if ($values.Mode -eq 'usb') {
         Start-SetupWork -Operation 'usb' -Values $values
@@ -355,7 +469,12 @@ $timer.Add_Tick({
             throw $pending.Worker.Streams.Error[0]
         }
 
+        if ($pending.Cancellation.IsCancellationRequested) {
+            throw [OperationCanceledException]::new('Setup cancelled. Saved settings were not changed.')
+        }
+
         if ($pending.Operation -ne 'devices') {
+            Save-PhoneConfiguration -RootDirectory $script:setupRoot -Configuration $result[0]
             $script:setupSaved = $true
             return
         }
@@ -370,9 +489,10 @@ $timer.Add_Tick({
             $devices.SelectedIndex = 0
         }
 
+        Restore-SavedDevice
         Update-SetupStatus
 
-        if (-not $authorizedDevices.Count -and $mode.SelectedItem.Value -ne 'wifi') {
+        if (-not $script:savedConfiguration -and -not $authorizedDevices.Count -and $mode.SelectedItem.Value -ne 'wifi') {
             $status.Text = 'No authorized USB phone found. Connect and authorize your phone, then click Refresh, or select Wi-Fi only to continue without a cable.'
         }
     }
@@ -386,17 +506,32 @@ $timer.Add_Tick({
 
         $status.Text = "Setup could not finish: $message"
 
+        if ($script:pairingState.Endpoint) {
+            $status.Text = 'Pairing completed. Connection is not ready: ' + $message + ' Use Retry connection, or enter Connection IP:port. A new code is not required.'
+        }
+
         if ($pending.Operation -eq 'devices') {
             $devices.Items.Clear()
+            Restore-SavedDevice
             Update-SetupStatus
 
-            if ($mode.SelectedItem.Value -ne 'wifi') {
+            if (-not $script:savedConfiguration -and $mode.SelectedItem.Value -ne 'wifi') {
                 $status.Text = 'USB discovery did not finish. Check your USB connection and click Refresh, or select Wi-Fi only to continue without a cable.'
             }
         }
     }
     finally {
+
+        if ($pending.Cancellation.IsCancellationRequested) {
+            $status.Text = 'Operation cancelled. Saved settings were not changed.'
+
+            if ($script:pairingState.Endpoint) {
+                $status.Text += ' Phone pairing completed and remains available; retry the connection without a new code.'
+            }
+        }
+
         $pending.Worker.Dispose()
+        $pending.Cancellation.Dispose()
         $script:pendingWork = $null
 
         if ($script:setupSaved) {
@@ -411,20 +546,45 @@ $timer.Add_Tick({
     }
 })
 $devices.Add_SelectedIndexChanged({ Update-SetupActions })
-$pairingCode.Add_TextChanged({ Update-SetupActions })
+$pairingCode.Add_TextChanged({ $script:pairingState.Clear(); Update-SetupActions })
+$connectionEndpoint.Add_TextChanged({ Update-SetupActions })
 $mode.Add_SelectedIndexChanged({ Update-SetupActions; Update-SetupStatus })
 $manualAddresses.Add_CheckedChanged({ Update-SetupActions })
+if ($script:savedConfiguration) {
+    $savedMode = Get-ConnectionMode -Configuration $script:savedConfiguration
+    $mode.SelectedItem = @($mode.Items | Where-Object { $_.Value -eq $savedMode })[0]
+    Restore-SavedDevice
+}
 Update-SetupActions
 Update-SetupStatus
 $refresh.Add_Click({ Start-SetupWork -Operation 'devices' })
 $finish.Add_Click({ Complete-Setup })
+$shortcutNow.Add_Click({
+    try {
+        . (Join-Path $script:setupRoot 'shortcut.ps1')
+        New-DesktopShortcut -RootDirectory $script:setupRoot
+        $status.Text = 'Desktop shortcut created. Device settings were not changed.'
+    } catch {
+        $status.Text = 'The shortcut could not be created: ' + $_.Exception.Message
+    }
+})
+$changePhone.Add_Click({
+    $script:savedConfiguration = $null
+    $script:pairingState.Clear()
+    $devices.Items.Clear()
+    $pairingCode.Clear()
+    $endpoint.Clear()
+    $connectionEndpoint.Clear()
+    Start-SetupWork -Operation 'devices'
+})
 $cancel.Add_Click({ $form.Close() })
 $form.Add_FormClosing({
     param($sender, $eventArguments)
 
     if ($null -ne $script:pendingWork -and -not $script:setupSaved) {
         $eventArguments.Cancel = $true
-        $status.Text = 'Please wait for the current operation to finish before closing setup.'
+        $script:pendingWork.Cancellation.Cancel()
+        $status.Text = 'Cancelling... Saved settings will not be changed. Any completed phone pairing remains available.'
     }
 })
 $form.Add_Shown({ $timer.Start(); Start-SetupWork -Operation 'devices' })

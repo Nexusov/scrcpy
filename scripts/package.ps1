@@ -41,7 +41,7 @@ foreach ($runtimeFile in $runtimeFiles) {
     Copy-Item -LiteralPath (Join-Path $RuntimeDirectory $runtimeFile) -Destination $applicationDirectory
 }
 
-foreach ($launcherFile in @('launch.ps1', 'launch.vbs', 'launcher-core.ps1', 'connection-core.ps1', 'instance.ps1', 'shortcut.ps1', 'setup.ps1', 'setup.vbs', 'phone.example.json')) {
+foreach ($launcherFile in @('launch.ps1', 'launch.vbs', 'launcher-core.ps1', 'connection-core.ps1', 'instance.ps1', 'version.ps1', 'shortcut.ps1', 'setup.ps1', 'setup.vbs', 'phone.example.json')) {
     Copy-Item -LiteralPath (Join-Path $repositoryDirectory ('launcher\' + $launcherFile)) -Destination $applicationDirectory
 }
 
@@ -78,4 +78,5 @@ if ((Split-Path -Parent $resolvedStagingDirectory) -ne $expectedParent) {
 Remove-Item -LiteralPath $resolvedStagingDirectory -Recurse -Force
 Write-Host "Packaged: $archivePath"
 Write-Host 'No personal phone settings, logs or build tools were included.'
+
 

@@ -75,12 +75,13 @@ function Get-ConnectionHint {
 
 # Resolve an authorized device before creating the native mirroring process.
 function Find-ReadyPhone {
-    param([string]$RootDirectory, $Configuration)
+    param([string]$RootDirectory, $Configuration, $Progress = @{})
     $probeTimeoutMilliseconds = 2000
     $mode = Get-ConnectionMode -Configuration $Configuration
     $wirelessTarget = [string]$Configuration.WirelessService
 
     if ($mode -ne 'wifi') {
+        $Progress.Status = 'Checking the USB connection...'
         try {
             $usbState = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('-s', $Configuration.UsbSerial, 'get-state') -TimeoutMilliseconds $probeTimeoutMilliseconds
 
@@ -100,6 +101,10 @@ function Find-ReadyPhone {
 
                 return [pscustomobject]@{ Serial = $Configuration.UsbSerial; WirelessTarget = $wirelessTarget }
             }
+
+            if (($usbState.Output + $usbState.Error) -match 'unauthorized') {
+                $Progress.Status = 'Phone found over USB. Unlock it and authorize USB debugging.'
+            }
         } catch {
             # A USB transport failure must not prevent Wi-Fi fallback.
         }
@@ -110,6 +115,7 @@ function Find-ReadyPhone {
     }
 
     try {
+        $Progress.Status = 'Looking for your phone over Wi-Fi...'
         $services = @(Get-PhoneWirelessServices -RootDirectory $RootDirectory -UsbSerial $Configuration.UsbSerial)
 
         if ($services.Count -eq 1) {
@@ -119,16 +125,20 @@ function Find-ReadyPhone {
         # A saved endpoint can still work when multicast discovery is unavailable.
     }
 
+    $Progress.Status = 'Trying the Wi-Fi connection...'
     $null = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('connect', $wirelessTarget) -TimeoutMilliseconds $probeTimeoutMilliseconds
     $state = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('-s', $wirelessTarget, 'get-state') -TimeoutMilliseconds $probeTimeoutMilliseconds
 
     if ($state.ExitCode -ne 0 -or $state.Output.Trim() -ne 'device') {
+        $Progress.Status = 'Wi-Fi connection unavailable. Retrying automatically...'
         return $null
     }
 
+    $Progress.Status = 'Phone connected. Verifying the saved device...'
     $identity = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('-s', $wirelessTarget, 'shell', 'getprop', 'ro.serialno') -TimeoutMilliseconds $probeTimeoutMilliseconds
 
     if ($identity.ExitCode -ne 0 -or $identity.Output.Trim() -cne $Configuration.UsbSerial) {
+        $Progress.Status = 'Could not verify the saved phone. Check your device in Setup.'
         return $null
     }
 

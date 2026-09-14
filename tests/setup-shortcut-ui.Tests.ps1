@@ -4,12 +4,14 @@ $setupSource = [IO.File]::ReadAllText((Join-Path $ProjectRoot 'launcher\setup.ps
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('scrcpy-ui-tests-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($testRoot)
 $mockCore = @'
+function Get-PhoneConfiguration { param($RootDirectory) return $null }
+function Get-ConnectionMode { param($Configuration) return $Configuration.ConnectionMode }
 function Get-SetupDevices {
     param($RootDirectory)
     return [pscustomobject]@{ Serial = 'test-phone'; State = 'device'; Model = 'Test phone' }
 }
 function Complete-WirelessPairing {
-    param($RootDirectory, $UsbSerial, $PairingCode, $Endpoint, $ConnectionEndpoint)
+    param($RootDirectory, $UsbSerial, $PairingCode, $Endpoint, $ConnectionEndpoint, $PairingState)
 
     if ($PairingCode -ne '123456') {
         throw 'Unexpected test pairing code.'

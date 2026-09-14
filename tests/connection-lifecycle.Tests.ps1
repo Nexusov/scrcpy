@@ -53,6 +53,8 @@ function New-TestNativeProcess {
     param([bool]$Exited, [long]$Handle)
     $process = [pscustomobject]@{ HasExited = $Exited; MainWindowHandle = [IntPtr]$Handle }
     $process | Add-Member ScriptMethod Refresh { }
+    $process | Add-Member ScriptMethod Kill { $this.HasExited = $true }
+    $process | Add-Member ScriptMethod WaitForExit { }
     return $process
 }
 
@@ -68,6 +70,35 @@ $script:session.NativeProcess.HasExited = $true
 Update-LauncherSession
 Assert-Lifecycle $script:form.Closed 'Closing native window did not end launcher.'
 Assert-Lifecycle ($script:probeCount -eq 0) 'Closing native window restarted a probe.'
+$instance.Signal.Dispose()
+
+Reset-Lifecycle
+$script:session.NativeStarted = [DateTime]::UtcNow.AddSeconds(-31)
+$script:session.NativeProcess = New-TestNativeProcess -Exited $false -Handle 0
+$ownedProcess = $script:session.NativeProcess
+$logPath = Join-Path ([IO.Path]::GetTempPath()) ('scrcpy-startup-test-' + [guid]::NewGuid().ToString('N') + '.log')
+
+try {
+    Update-LauncherSession
+    Assert-Lifecycle $ownedProcess.HasExited 'Timed-out startup child was not stopped.'
+    Assert-Lifecycle ($null -eq $script:session.NativeProcess) 'Timed-out startup resources were not released.'
+    Assert-Lifecycle ($script:session.Paused -and $script:retryButton.Enabled) 'Startup timeout did not enable deliberate recovery.'
+    Update-LauncherSession
+    Assert-Lifecycle ($script:probeCount -eq 0) 'Startup timeout retried without user action.'
+} finally {
+    Remove-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
+    $instance.Signal.Dispose()
+}
+
+Reset-Lifecycle
+$script:session.Started = [DateTime]::UtcNow.AddHours(-1)
+Assert-Lifecycle (-not (Test-NativeStartupTimeout -Session $script:session)) 'Phone discovery inherited native startup timeout.'
+$script:session.NativeStarted = [DateTime]::UtcNow.AddSeconds(-31)
+$script:session.NativeVisible = $true
+Assert-Lifecycle (-not (Test-NativeStartupTimeout -Session $script:session)) 'Visible mirroring was subject to startup timeout.'
+$script:session.Progress = @{ Status = 'Phone found over USB. Unlock it and authorize USB debugging.' }
+Update-WaitingStatus
+Assert-Lifecycle ($script:statusLabel.Text -match 'Still waiting.*authorize USB debugging') 'Delayed status erased actionable USB authorization state.'
 $instance.Signal.Dispose()
 
 Reset-Lifecycle

@@ -75,7 +75,9 @@ Assert-Connection ($script:calls.Count -eq 1) 'USB mode performed a wireless pro
 
 Reset-Probe
 $script:usbState = 'unauthorized'
-$target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $usb
+$progress = @{}
+$target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $usb -Progress $progress
+Assert-Connection ($progress.Status -match 'authorize USB debugging') 'Unauthorized USB status omits the action needed on the phone.'
 Assert-Connection ($null -eq $target) 'Unauthorized USB was marked ready.'
 Assert-Connection ($script:calls.Count -eq 1) 'Unavailable USB mode attempted Wi-Fi.'
 
@@ -96,13 +98,17 @@ Assert-Connection ($target.Serial -eq $auto.WirelessService) 'USB timeout preven
 
 Reset-Probe
 $script:wirelessState = 'offline'
-$target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $wifi
+$progress = @{}
+$target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $wifi -Progress $progress
+Assert-Connection ($progress.Status -match 'unavailable' -and $progress.Status -notmatch 'disabled') 'Offline status must not assert Wireless debugging is disabled.'
 Assert-Connection ($null -eq $target) 'Offline Wi-Fi transport was marked ready.'
 Assert-Connection (-not ($script:calls | Where-Object { $_ -like '*ro.serialno' })) 'Offline device was queried for identity.'
 
 Reset-Probe
 $script:identity = 'other-phone'
-$target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $wifi
+$progress = @{}
+$target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $wifi -Progress $progress
+Assert-Connection ($progress.Status -match 'verify the saved phone') 'Wrong phone did not produce identity-specific guidance.'
 Assert-Connection ($null -eq $target) 'Wrong-phone Wi-Fi identity was accepted.'
 
 Reset-Probe

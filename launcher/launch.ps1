@@ -36,7 +36,7 @@ function Show-CurrentLauncherWindow {
 function Start-ConnectionProbe {
     $worker = [PowerShell]::Create()
     $null = $worker.AddScript({
-        param($rootDirectory, $configuration, $cancellation)
+        param($rootDirectory, $configuration, $cancellation, $progress)
         $ErrorActionPreference = 'Stop'
         . (Join-Path $rootDirectory 'launcher-core.ps1')
         . (Join-Path $rootDirectory 'connection-core.ps1')
@@ -44,8 +44,8 @@ function Start-ConnectionProbe {
             param([string]$RootDirectory, [string[]]$Arguments, [int]$TimeoutMilliseconds = 12000)
             Invoke-ConnectionAdb -RootDirectory $RootDirectory -Arguments $Arguments -TimeoutMilliseconds $TimeoutMilliseconds -Cancellation $cancellation
         }
-        Find-ReadyPhone -RootDirectory $rootDirectory -Configuration $configuration
-    }).AddArgument($PSScriptRoot).AddArgument($script:session.Configuration).AddArgument($script:session.Cancellation)
+        Find-ReadyPhone -RootDirectory $rootDirectory -Configuration $configuration -Progress $progress
+    }).AddArgument($PSScriptRoot).AddArgument($script:session.Configuration).AddArgument($script:session.Cancellation).AddArgument($script:session.Progress)
     $script:session.Worker = $worker
     $script:session.Pending = $worker.BeginInvoke()
 }
@@ -79,11 +79,40 @@ function Start-MirroringProcess {
     $script:session.OutputFile = [IO.File]::Open($logPath, 'Append', 'Write', 'ReadWrite')
     $script:session.ErrorFile = [IO.File]::Open($errorLogPath, 'Create', 'Write', 'ReadWrite')
     $script:session.NativeProcess = [Diagnostics.Process]::Start($startInfo)
+    $script:session.NativeStarted = [DateTime]::UtcNow
     $script:session.OutputCopy = $script:session.NativeProcess.StandardOutput.BaseStream.CopyToAsync($script:session.OutputFile)
     $script:session.ErrorCopy = $script:session.NativeProcess.StandardError.BaseStream.CopyToAsync($script:session.ErrorFile)
     $script:statusLabel.Text = 'Opening your phone screen...'
     $script:retryButton.Enabled = $false
     $script:setupButton.Enabled = $false
+}
+
+# Bound only native window startup; phone discovery may wait indefinitely.
+function Test-NativeStartupTimeout {
+    param($Session, [DateTime]$Now = [DateTime]::UtcNow)
+    $nativeStartupTimeoutSeconds = 30
+
+    if ($Session.NativeVisible -or $null -eq $Session.NativeStarted) {
+        return $false
+    }
+
+    return ($Now - $Session.NativeStarted).TotalSeconds -ge $nativeStartupTimeoutSeconds
+}
+
+# Stop only the native child owned by this launch attempt.
+function Stop-MirroringStartup {
+    $process = $script:session.NativeProcess
+
+    if ($null -ne $process -and -not $process.HasExited) {
+        $process.Kill()
+        $process.WaitForExit()
+    }
+
+    Close-MirroringResources
+    $script:session.Paused = $true
+    $script:statusLabel.Text = 'The screen did not open within 30 seconds. Open logs for details, or retry.'
+    $script:retryButton.Enabled = $true
+    $script:setupButton.Enabled = $true
 }
 
 # Release completed native output streams before a deliberate retry.
@@ -139,6 +168,7 @@ function Update-LauncherSession {
         }
 
         $script:session.Configuration = Get-PhoneConfiguration -RootDirectory $PSScriptRoot
+        $script:session.Progress.Status = ''
 
         if ($null -eq $script:session.Configuration) {
             throw 'Setup did not save a valid configuration. Run Setup.vbs to try again.'
@@ -166,7 +196,7 @@ function Update-LauncherSession {
             }
 
             $script:session.Paused = $true
-            $script:statusLabel.Text = 'The screen could not open. Check last-run-errors.log, then retry.'
+            $script:statusLabel.Text = 'The screen could not open. Open logs for details, then retry.'
             $script:retryButton.Enabled = $true
             $script:setupButton.Enabled = $true
             return
@@ -175,6 +205,11 @@ function Update-LauncherSession {
         if (-not $script:session.NativeVisible -and $script:session.NativeProcess.MainWindowHandle -ne [IntPtr]::Zero) {
             $script:session.NativeVisible = $true
             $script:form.Hide()
+        }
+
+        if (Test-NativeStartupTimeout -Session $script:session) {
+            Stop-MirroringStartup
+            Add-Content -LiteralPath $logPath -Value 'Native startup timed out after 30 seconds before a window appeared.'
         }
 
         return
@@ -225,9 +260,20 @@ function Update-LauncherSession {
 # Change only the status after ten seconds while keeping helpful instructions visible.
 function Update-WaitingStatus {
     $waitingThresholdSeconds = 10
+    $status = [string]$script:session.Progress.Status
 
     if (([DateTime]::UtcNow - $script:session.Started).TotalSeconds -ge $waitingThresholdSeconds) {
         $script:statusLabel.Text = 'Still waiting for your phone. Retrying automatically...'
+
+        if ($status) {
+            $script:statusLabel.Text = 'Still waiting. ' + $status
+        }
+
+        return
+    }
+
+    if ($status) {
+        $script:statusLabel.Text = $status
     }
 }
 
@@ -235,6 +281,7 @@ try {
     . (Join-Path $PSScriptRoot 'launcher-core.ps1')
     . (Join-Path $PSScriptRoot 'connection-core.ps1')
     . (Join-Path $PSScriptRoot 'instance.ps1')
+    . (Join-Path $PSScriptRoot 'version.ps1')
     $instance = Enter-LauncherInstance
 
     if (-not $instance.IsPrimary) {
@@ -244,7 +291,7 @@ try {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [Windows.Forms.Application]::EnableVisualStyles()
-    Set-Content -LiteralPath $logPath -Value ('Started: ' + (Get-Date -Format o)) -Encoding UTF8
+    Set-Content -LiteralPath $logPath -Value ('scrcpy Seamless ' + (Get-SeamlessVersion) + ' | Started: ' + (Get-Date -Format o)) -Encoding UTF8
     $configuration = Get-PhoneConfiguration -RootDirectory $PSScriptRoot
     $script:session = @{
         Configuration = $configuration; Worker = $null; Pending = $null
@@ -253,9 +300,10 @@ try {
         Started = [DateTime]::UtcNow; NextProbe = [DateTime]::MinValue
         OutputFile = $null; ErrorFile = $null; OutputCopy = $null; ErrorCopy = $null
         Cancellation = [hashtable]::Synchronized(@{ Requested = $false })
+        Progress = [hashtable]::Synchronized(@{ Status = '' }); NativeStarted = $null
     }
     $script:form = New-Object Windows.Forms.Form
-    $script:form.Text = 'scrcpy Seamless - Connecting'
+    $script:form.Text = 'scrcpy Seamless ' + (Get-SeamlessVersion) + ' - Connecting'
     $script:form.ClientSize = New-Object Drawing.Size(560, 215)
     $script:form.StartPosition = 'CenterScreen'
     $script:form.FormBorderStyle = 'FixedDialog'
@@ -287,12 +335,24 @@ try {
     $cancelButton.Text = 'Cancel'
     $cancelButton.Location = New-Object Drawing.Point(430, 165)
     $cancelButton.Size = New-Object Drawing.Size(105, 32)
-    $script:form.Controls.AddRange(@($script:statusLabel, $script:hintLabel, $script:retryButton, $script:setupButton, $cancelButton))
+    $logsButton = New-Object Windows.Forms.Button
+    $logsButton.Text = 'Open logs'
+    $logsButton.Location = New-Object Drawing.Point(20, 165)
+    $logsButton.Size = New-Object Drawing.Size(105, 32)
+    $logsButton.Add_Click({
+        try {
+            Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,"' + $logPath + '"')
+        } catch {
+            $script:statusLabel.Text = 'Could not open the log folder. Logs are stored next to the runtime scripts.'
+        }
+    })
+    $script:form.Controls.AddRange(@($script:statusLabel, $script:hintLabel, $script:retryButton, $script:setupButton, $cancelButton, $logsButton))
     $script:form.CancelButton = $cancelButton
     $script:retryButton.Add_Click({
         $script:session.Paused = $false
         $script:session.NextProbe = [DateTime]::MinValue
         $script:session.Started = [DateTime]::UtcNow
+        $script:session.Progress.Status = ''
         $script:statusLabel.Text = 'Connecting to your phone...'
     })
     $script:setupButton.Add_Click({

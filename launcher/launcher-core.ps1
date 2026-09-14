@@ -1,6 +1,10 @@
-# Run ADB with bounded execution and without opening a console.
+﻿# Run ADB with bounded execution and without opening a console.
 function Invoke-AdbCommand {
     param([string]$RootDirectory, [string[]]$Arguments, [int]$TimeoutMilliseconds = 12000)
+
+    if ($script:setupCancellation -and $script:setupCancellation.IsCancellationRequested) {
+        throw [OperationCanceledException]::new('Setup cancelled. Saved settings were not changed.')
+    }
 
     foreach ($argument in $Arguments) {
 
@@ -26,7 +30,21 @@ function Invoke-AdbCommand {
         $outputTask = $process.StandardOutput.ReadToEndAsync()
         $errorTask = $process.StandardError.ReadToEndAsync()
 
-        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+        while (-not $process.WaitForExit(100)) {
+
+            if ($script:setupCancellation -and $script:setupCancellation.IsCancellationRequested) {
+                $process.Kill()
+                $process.WaitForExit()
+                throw [OperationCanceledException]::new('Setup cancelled. Saved settings were not changed.')
+            }
+
+            if ([DateTime]::UtcNow -ge $deadline) {
+                break
+            }
+        }
+
+        if (-not $process.HasExited) {
             $process.Kill()
             $process.WaitForExit()
             throw 'ADB timed out. Check the phone connection and try again.'
@@ -228,7 +246,11 @@ function Get-PhoneWirelessServices {
 
 # Pair over Wi-Fi and verify the connected phone before returning settings.
 function Complete-WirelessPairing {
-    param([string]$RootDirectory, [string]$UsbSerial, [string]$PairingCode, [string]$Endpoint = '', [string]$ConnectionEndpoint = '')
+    param([string]$RootDirectory, [string]$UsbSerial, [string]$PairingCode, [string]$Endpoint = '', [string]$ConnectionEndpoint = '', [hashtable]$PairingState = @{})
+
+    if ($PairingState.Endpoint -and $PairingState.Serial -cne $UsbSerial) {
+        throw 'The selected phone changed. Choose Set up another phone before pairing a different device.'
+    }
 
     $hasUsbIdentity = -not [string]::IsNullOrEmpty($UsbSerial)
 
@@ -240,7 +262,11 @@ function Complete-WirelessPairing {
         throw 'Use the IPv4 address and connection port from the main Wireless debugging screen.'
     }
 
-    if ($PairingCode -notmatch '^\d{6}$') {
+    if ($PairingState.Endpoint) {
+        $Endpoint = $PairingState.Endpoint
+    }
+
+    if (-not $PairingState.Endpoint -and $PairingCode -notmatch '^\d{6}$') {
         throw 'Enter the six-digit pairing code shown on your phone.'
     }
 
@@ -265,7 +291,7 @@ function Complete-WirelessPairing {
 
     $pairingAddress = ($Endpoint -split ':')[0]
 
-    if ($ConnectionEndpoint -eq $Endpoint) {
+    if (-not $PairingState.Existing -and $ConnectionEndpoint -eq $Endpoint) {
         throw 'Pairing and connection ports are different. Leave Connection IP:port blank for discovery, or use the address on the main Wireless debugging screen.'
     }
 
@@ -273,11 +299,16 @@ function Complete-WirelessPairing {
         throw 'The pairing and connection addresses must belong to the same phone IP.'
     }
 
-    $result = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('pair', $Endpoint, $PairingCode)
-    $pairingSucceeded = $result.ExitCode -eq 0 -and $result.Output -match 'Successfully paired'
+    if (-not $PairingState.Endpoint) {
+        $result = Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('pair', $Endpoint, $PairingCode)
+        $pairingSucceeded = $result.ExitCode -eq 0 -and $result.Output -match 'Successfully paired'
 
-    if (-not $pairingSucceeded) {
-        throw 'Pairing failed. Make sure Wireless debugging is enabled, keep the pairing-code dialog open, and enter the current code and pairing port.'
+        if (-not $pairingSucceeded) {
+            throw 'Pairing failed. Make sure Wireless debugging is enabled, keep the pairing-code dialog open, and enter the current code and pairing port.'
+        }
+
+        $PairingState.Serial = $UsbSerial
+        $PairingState.Endpoint = $Endpoint
     }
 
     $discoveryAttempts = 3
@@ -296,7 +327,7 @@ function Complete-WirelessPairing {
         } catch {
 
             if (-not $ConnectionEndpoint) {
-                throw 'Pairing succeeded, but discovery failed. Make sure Wireless debugging is still enabled and both devices are on the same network. Enter Connection IP:port from the main Wireless debugging screen and retry with a fresh pairing code.'
+                throw 'Pairing succeeded, but discovery failed. Make sure Wireless debugging is still enabled and both devices are on the same network. Enter Connection IP:port from the main Wireless debugging screen and retry the connection; pairing does not need to be repeated.'
             }
         }
 
@@ -312,7 +343,7 @@ function Complete-WirelessPairing {
     }
 
     if (-not $wirelessServices.Count) {
-        throw 'Pairing completed, but the phone was not discovered over Wi-Fi. Make sure Wireless debugging is enabled and both devices are on the same network. If needed, enter Connection IP:port from the main Wireless debugging screen and retry with a fresh pairing code. Settings were not changed.'
+        throw 'Pairing completed, but the phone was not discovered over Wi-Fi. Make sure Wireless debugging is enabled and both devices are on the same network. If needed, enter Connection IP:port from the main Wireless debugging screen and retry the connection; pairing does not need to be repeated. Settings were not changed.'
     }
 
     foreach ($service in $wirelessServices) {
