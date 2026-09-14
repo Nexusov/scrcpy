@@ -169,6 +169,37 @@ while ($layout.RowStyles.Count -lt $layout.RowCount) {
     [void]$layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('AutoSize')))
 }
 
+$createShortcut = New-Object System.Windows.Forms.CheckBox
+$createShortcut.Text = 'Create a desktop shortcut'
+$createShortcut.Checked = $true
+$createShortcut.AutoSize = $true
+$createShortcut.Dock = 'Fill'
+$buttonRow = $layout.GetRow($buttons)
+$layout.SetRow($buttons, $buttonRow + 1)
+$layout.Controls.Add($createShortcut, 0, $buttonRow)
+$layout.RowCount = $buttonRow + 2
+[void]$layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('AutoSize')))
+
+# Creates the optional shortcut only after settings have been saved successfully.
+function Complete-ShortcutSetup {
+
+    if (-not $script:setupSaved -or -not $createShortcut.Checked) {
+        return
+    }
+
+    try {
+        . (Join-Path $script:setupRoot 'shortcut.ps1')
+        New-DesktopShortcut -RootDirectory $script:setupRoot
+    }
+    catch {
+        Show-ShortcutWarning
+    }
+}
+
+# Reports a shortcut failure without treating saved device setup as a failure.
+function Show-ShortcutWarning {
+    [void][Windows.Forms.MessageBox]::Show($form, 'Device setup was saved, but the desktop shortcut could not be created. You can still launch the application from start.vbs in its folder.', 'scrcpy Seamless - Shortcut', 'OK', 'Warning')
+}
 # Runs ADB and configuration writes away from the Windows Forms thread.
 function Start-SetupWork {
     param([string]$Operation, [hashtable]$Values = @{})
@@ -241,7 +272,7 @@ function Update-SetupActions {
         $control.Visible = $needsWifi -and $manualAddresses.Checked
     }
 
-    foreach ($control in @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $cancel)) {
+    foreach ($control in @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $createShortcut, $cancel)) {
         $control.Enabled = $isIdle
     }
 }
@@ -369,6 +400,7 @@ $timer.Add_Tick({
         $script:pendingWork = $null
 
         if ($script:setupSaved) {
+            Complete-ShortcutSetup
             $form.DialogResult = 'OK'
             $form.Close()
         }

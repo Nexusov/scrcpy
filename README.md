@@ -15,14 +15,37 @@ official [Genymobile](https://github.com/genymobile) release.
    the archive.
 3. Double-click **`Start.vbs`** and choose how to connect your phone in the setup
    wizard. Follow the instructions below for your preferred connection.
+4. Leave **Create a desktop shortcut** selected if you want a desktop launcher.
+   The shortcut is created after successful setup; an existing app shortcut is reused.
 
 Mirroring starts when setup finishes. After that, use **`Start.vbs`** or your
 shortcut to launch the app. No installation, terminal commands, or manual
 configuration files are needed. Keep all extracted files together.
 
-To change the connection mode or phone later, run **`setup.vbs`**, then restart
+The ZIP contains `Start.vbs`, `Setup.vbs`, this README, `LICENSE`, and
+`THIRD_PARTY.md` at the top level. Everything needed to run the app is inside
+`app/`; do not move its files out individually. You can move the whole extracted
+folder, then rerun setup to update an existing desktop shortcut.
+
+To change the connection mode or phone later, run **`Setup.vbs`**, then restart
 mirroring. Cancelling setup keeps your previous settings. Existing `launch.vbs`
 shortcuts continue to work.
+
+## Connecting to your phone
+
+A connection window appears immediately when you start the app. It shows what
+your selected connection mode needs: USB authorization or Wireless debugging and
+a shared network. After ten seconds, the status changes to **Still waiting for
+your phone** while connection attempts continue automatically.
+
+- **Retry now** requests another check without creating another mirroring session.
+- **Setup** opens the device wizard to change your connection settings.
+- **Cancel** stops waiting. When the setup wizard is open, use its Cancel button.
+
+Clicking the launcher again brings the existing connection, setup, or mirroring
+window forward instead of opening another session. The connection window remains
+visible until the phone's mirroring window opens. If that window cannot open,
+check the error log and click **Retry now** or **Setup**.
 
 ## Choose a connection
 
@@ -92,11 +115,11 @@ like `192.168.1.10:37000`; use the actual values shown on your phone.
 **A saved connection stops working:** ensure Wireless debugging is still enabled
 and both devices are on the same network. A manually entered connection address
 can change after a network change or restart of Wireless debugging. Run
-`setup.vbs` again to update it. Pair again if the phone has forgotten the PC.
+`Setup.vbs` again to update it. Pair again if the phone has forgotten the PC.
 
 For other launch errors, check `last-run.log` and `last-run-errors.log` in the
-application folder. Setup errors appear in the wizard. Your device settings are
-stored locally in `phone.json`; pairing codes are not saved. Release archives do
+`app/` folder (beside the launcher scripts in older flat installations). Setup errors appear in the wizard. Your device settings are
+stored locally in `app/phone.json` (beside the launcher scripts in older flat installations); pairing codes are not saved. Release archives do
 not contain personal device settings or logs.
 
 ## Limitations
@@ -121,4 +144,5 @@ notices and licensing are preserved.
 This software uses FFmpeg libraries under LGPL-2.1-or-later. Corresponding
 [dependency sources](https://github.com/Nexusov/scrcpy/releases/latest) are provided
 alongside the portable download. Third-party license notices are included in
-`licenses/`.
+`app/licenses/` in the portable package (`licenses/` in the source repository).
+

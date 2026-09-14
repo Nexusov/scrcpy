@@ -110,36 +110,7 @@ public static class FakeDeviceTool {
     Assert-RejectedPairing @{ UsbSerial = 'TEST123'; PairingCode = '123456'; Endpoint = '192.168.1.2:4000' }
     [IO.File]::Delete((Join-Path $temporaryDirectory 'reject.flag'))
 
-    # Existing users bypass the wizard, and USB takes priority over saved Wi-Fi.
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $temporaryDirectory 'launch.ps1')
-    Assert-Condition ($LASTEXITCODE -eq 0) 'Legacy launch failed.'
-    $launchResult = Get-Content (Join-Path $temporaryDirectory 'launch-result.txt') -Raw
-    Assert-Condition ($launchResult.StartsWith('-s TEST123 ')) 'USB did not take priority.'
-    $wifiMode = [pscustomobject]@{ UsbSerial = 'TEST123'; WirelessService = $legacy.WirelessService; ConnectionMode = 'wifi' }
-    Save-PhoneConfiguration $temporaryDirectory $wifiMode
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $temporaryDirectory 'launch.ps1')
-    $launchResult = Get-Content (Join-Path $temporaryDirectory 'launch-result.txt') -Raw
-    Assert-Condition ($launchResult.StartsWith('-s adb-TEST123-paired._adb-tls-connect._tcp ')) 'Explicit Wi-Fi mode chose an attached USB phone.'
-    Assert-Condition ((Get-PhoneConfiguration $temporaryDirectory).ConnectionMode -eq 'wifi') 'Connection mode was not persisted.'
-    Save-PhoneConfiguration $temporaryDirectory $legacy
-    Set-Content (Join-Path $temporaryDirectory 'devices.txt') ''
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $temporaryDirectory 'launch.ps1')
-    $launchResult = Get-Content (Join-Path $temporaryDirectory 'launch-result.txt') -Raw
-    Assert-Condition ($launchResult.StartsWith('-s adb-TEST123-paired._adb-tls-connect._tcp ')) 'Saved Wi-Fi launch failed.'
-    Save-PhoneConfiguration $temporaryDirectory ([pscustomobject]@{ UsbSerial = 'TEST123'; WirelessService = '' })
-    Set-Content (Join-Path $temporaryDirectory 'devices.txt') 'TEST123 device'
-    $env:SCRCPY_RECONNECT_SERIAL = 'must-be-cleared'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $temporaryDirectory 'launch.ps1')
-    $launchResult = Get-Content (Join-Path $temporaryDirectory 'launch-result.txt') -Raw
-    Assert-Condition ($launchResult.EndsWith("`n")) 'USB-only inherited reconnect configuration.'
-
-    # A cancelled first run must not start scrcpy or write settings.
-    [IO.File]::Delete((Join-Path $temporaryDirectory 'phone.json'))
-    [IO.File]::Delete((Join-Path $temporaryDirectory 'launch-result.txt'))
-    Set-Content (Join-Path $temporaryDirectory 'setup.ps1') 'exit 1'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $temporaryDirectory 'launch.ps1')
-    Assert-Condition (-not (Test-Path (Join-Path $temporaryDirectory 'launch-result.txt'))) 'Cancelled setup launched scrcpy.'
-    Assert-Condition (-not (Test-Path (Join-Path $temporaryDirectory 'phone.json'))) 'Cancelled setup wrote settings.'
+    # Launch lifecycle and transport selection are tested without GUI in connection test suites.
     Set-Content (Join-Path $temporaryDirectory 'timeout.flag') ''
     $timedOut = $false
 
@@ -160,3 +131,4 @@ public static class FakeDeviceTool {
         [IO.Directory]::Delete($resolved, $true)
     }
 }
+
