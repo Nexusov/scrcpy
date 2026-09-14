@@ -1,10 +1,11 @@
+[CmdletBinding()]
+param([string]$CommitMessage = 'Update scrcpy Seamless')
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path -Parent $PSScriptRoot
-$commitMessage = 'Add device setup reset and Settings launcher'
-$sourcePaths = @('README.md', 'launcher', 'scripts', 'tests', 'docs/CHANGES.md')
-$releaseTag = 'v1.0.0'
+$manifest = Get-Content -LiteralPath (Join-Path $projectDirectory 'release-manifest.json') -Raw | ConvertFrom-Json
+$releaseTag = 'v' + $manifest.Release
 
-# Run Git against the project containing this dist directory and stop on failure.
+# Run Git against this checkout and stop before subsequent publication steps on failure.
 function Invoke-ProjectGit {
     param([string[]]$Arguments)
     & git -C $projectDirectory @Arguments
@@ -14,31 +15,45 @@ function Invoke-ProjectGit {
     }
 }
 
+# Admit public project paths while rejecting local settings even when force-staged.
+function Test-PublicSourcePath {
+    param([string]$Path)
+    $privatePath = $Path -match '(^|/)(phone\.json|adbkey(\.pub)?|build\.local\.json)$' -or
+        $Path -match '\.(log|pid|lnk)$' -or $Path -match '(^|/)(\.env($|\.)|credentials($|\.))'
+
+    if ($privatePath) {
+        return $false
+    }
+    $publicRootFiles = @('README.md', 'LICENSE', 'THIRD_PARTY.md', 'CONTRIBUTING.md', 'release-manifest.json', '.gitignore', '.gitattributes')
+    return $Path -in $publicRootFiles -or $Path -match '^(launcher|scripts|tests|docs|src|licenses|\.github)/'
+}
+
 try {
     $branch = Invoke-ProjectGit -Arguments @('branch', '--show-current')
 
     if ($branch -ne 'main') {
         throw 'Switch the project to main before publishing.'
     }
+    $changedPaths = @(
+        Invoke-ProjectGit -Arguments @('-c', 'core.quotepath=false', 'diff', '--name-only')
+        Invoke-ProjectGit -Arguments @('-c', 'core.quotepath=false', 'diff', '--cached', '--name-only')
+        Invoke-ProjectGit -Arguments @('-c', 'core.quotepath=false', 'ls-files', '--others', '--exclude-standard')
+    ) | Sort-Object -Unique
 
-    $stagedPaths = @(Invoke-ProjectGit -Arguments @('diff', '--cached', '--name-only'))
-    foreach ($stagedPath in $stagedPaths) {
-        $allowed = $stagedPath -in @('README.md', 'docs/CHANGES.md') -or $stagedPath -match '^(launcher|scripts|tests)/'
-
-        if (-not $allowed) {
-            throw "An unrelated file is already staged: $stagedPath. Unstage or commit it separately before publishing."
+    foreach ($path in $changedPaths) {
+        if (-not (Test-PublicSourcePath -Path $path)) {
+            throw "Unaccounted or private change: $path. Review it explicitly before publishing. No tag was moved."
         }
     }
 
-    Invoke-ProjectGit -Arguments (@('add', '--') + $sourcePaths)
-    $changes = @(Invoke-ProjectGit -Arguments @('diff', '--cached', '--name-only'))
-
-    if ($changes.Count) {
-        Invoke-ProjectGit -Arguments @('commit', '-m', $commitMessage)
+    if ($changedPaths.Count) {
+        Invoke-ProjectGit -Arguments (@('add', '--') + $changedPaths)
+        Invoke-ProjectGit -Arguments @('commit', '-m', $CommitMessage)
     }
+    $remainingChanges = @(Invoke-ProjectGit -Arguments @('status', '--porcelain', '--untracked-files=all'))
 
-    if (-not $changes.Count) {
-        Write-Host 'No new source changes to commit. Pushing existing commits.'
+    if ($remainingChanges.Count) {
+        throw 'The checkout is not clean after committing. Publication stopped before updating the release tag.'
     }
 
     Invoke-ProjectGit -Arguments @('push', 'origin', 'main')

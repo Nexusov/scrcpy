@@ -37,8 +37,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Con
 allows GCC to locate the assembler and linker. The local configuration is excluded
 from Git.
 
-The resulting executable is written to `dist/scrcpy.exe`; intermediate files are
-stored in `.build/`. The application in `outputs/` is not replaced automatically.
+The resulting executable is written to `dist/scrcpy.exe`, with a matching
+`dist/scrcpy.exe.manifest.json` containing its hash and native source fingerprint.
+Intermediate files are stored in `.build/`. The application in `outputs/` is not replaced automatically.
 Start with an empty `.build/` directory when changing compilers.
 
 The script automates the build commands but does not guarantee byte-identical
@@ -60,9 +61,31 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package.ps1 -R
 Without this parameter, the script uses `outputs/scrcpy-seamless`.
 It produces `dist/scrcpy-seamless-win64.zip` and a SHA-256 checksum file.
 
+The runtime directory may also be an extracted package containing `app/`.
+Packaging selects the freshly built executable and verifies its sidecar against
+current sources. If neither build output exists, launcher-only changes may reuse
+the reviewed imported native baseline. Incomplete builds, changed native sources,
+or mismatched runtime hashes stop packaging. See [PACKAGING.md](PACKAGING.md) for
+the exact provenance rules; a source fingerprint does not guarantee a reproducible build.
+
 The archive includes `phone.example.json` and excludes personal `phone.json`
 settings, logs, and build tools. Before distributing a package publicly, include
 the license notices and source information for the specific dependency binaries
 in that package.
 
 After validating the build, you can remove `.build/` and downloaded build tools.
+
+## Validate the package
+
+Run all source tests and validate the exact archive intended for distribution:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1 -ArchivePath .\dist\scrcpy-seamless-win64.zip
+```
+
+The ordinary test command without `-ArchivePath` uses a synthetic runtime and
+requires no native build or downloaded package. An explicit archive path must
+exist and have its matching `.sha256` file. Archive tests check layout, checksums,
+documentation links, privacy, wrappers, and shortcut behavior; they do not connect
+to a phone. Complete the real-device checks in [ARCHITECTURE.md](ARCHITECTURE.md)
+before distributing a changed launcher or native client.

@@ -1,0 +1,25 @@
+{
+  "SchemaVersion": 1,
+  "Release": "1.0.0",
+  "Build": "20260914.3",
+  "Upstream": "scrcpy 4.0",
+  "NativeBaseline": {
+    "Origin": "imported-baseline",
+    "SourceFingerprint": "9c59e94f11c5956259ed093049c99d7fa6f43772748960e5112627291f20684f",
+    "ExecutableSha256": "c5e335dc802eeea3e6a83f721baa274707df62709fbcfd69bd8a397c2cb0b5da",
+    "Note": "Reviewed existing portable client imported for launcher-only changes; this records identity, not a reproducible build attestation."
+  },
+  "RuntimeFiles": {
+    "scrcpy-server": "84924bd564a1eb6089c872c7521f968058977f91f5ff02514a8c74aff3210f3a",
+    "adb.exe": "58765259a349cce392fbb2f15dab75fed3b7c0b40cc68a7653278b9850602a2f",
+    "AdbWinApi.dll": "689e4263252c734ee40d748f0e5a911801c6083a8e81b5040fd9c49dff3bfdce",
+    "AdbWinUsbApi.dll": "e6141805bb19eeafac6ab2d0fb50aa098b8c27149dc8ed73739cc40436274748",
+    "SDL3.dll": "f8bb1698f618949498ac517a0766eaa91972ecc818d80deb00634e197ee923cf",
+    "avcodec-62.dll": "893237890f744ea1eb447f56e8ac9d803deb48170bb456a11a10edf8c08a1eaa",
+    "avformat-62.dll": "d46e9b99b27c743b8ae73eacfd76004fba218b65eba5a1ce9cdf494a7030a4a4",
+    "avutil-60.dll": "2933c61bd5c3f0c2bec22310de8b9a22969030fb1ee204eae1a4948e7599f59d",
+    "swresample-6.dll": "91c2595781581c61144262fc596dcdbdca7f72b6315d28e31becc67d35b2cf59",
+    "scrcpy.png": "8e8ca237898faa16014cdd118396af53405b423f3db0508c50cc3edce08eb313",
+    "disconnected.png": "e394873cd3e2cc3ab0cca6212b10ed2a8a0fad11a05675c8a9fa6f26f3ae12c0"
+  }
+}

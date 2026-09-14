@@ -4,6 +4,9 @@ param([string]$RuntimeDirectory)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repositoryDirectory = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'provenance.ps1')
+$manifestPath = Join-Path $repositoryDirectory 'release-manifest.json'
+$releaseManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
 if (-not $RuntimeDirectory) {
     $RuntimeDirectory = Join-Path $repositoryDirectory 'outputs\scrcpy-seamless'
@@ -16,11 +19,8 @@ if (Test-Path -LiteralPath (Join-Path $nestedRuntimeDirectory 'scrcpy.exe') -Pat
     $RuntimeDirectory = $nestedRuntimeDirectory
 }
 
-$runtimeFiles = @(
-    'scrcpy.exe', 'scrcpy-server', 'adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll',
-    'SDL3.dll', 'avcodec-62.dll', 'avformat-62.dll', 'avutil-60.dll',
-    'swresample-6.dll', 'scrcpy.png', 'disconnected.png'
-)
+$runtimeFiles = @($releaseManifest.RuntimeFiles.PSObject.Properties.Name)
+$nativeClient = Resolve-PackageNativeClient -RepositoryDirectory $repositoryDirectory -RuntimeDirectory $RuntimeDirectory -ReleaseManifest $releaseManifest
 
 # Validate every input before creating the release staging directory.
 foreach ($runtimeFile in $runtimeFiles) {
@@ -29,6 +29,10 @@ foreach ($runtimeFile in $runtimeFiles) {
     if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) {
         throw "Missing runtime file: $runtimePath"
     }
+
+    if ((Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash -ne $releaseManifest.RuntimeFiles.$runtimeFile) {
+        throw "Runtime file differs from the reviewed manifest: $runtimeFile"
+    }
 }
 
 $distributionDirectory = Join-Path $repositoryDirectory 'dist'
@@ -36,12 +40,15 @@ $stagingDirectory = Join-Path $distributionDirectory ('package-' + [guid]::NewGu
 $archivePath = Join-Path $distributionDirectory 'scrcpy-seamless-win64.zip'
 $applicationDirectory = Join-Path $stagingDirectory 'app'
 New-Item -ItemType Directory -Path $applicationDirectory -Force | Out-Null
+Copy-Item -LiteralPath $nativeClient.Path -Destination (Join-Path $applicationDirectory 'scrcpy.exe')
+Copy-Item -LiteralPath $manifestPath -Destination $applicationDirectory
+$nativeClient | Select-Object Origin, SourceFingerprint, Sha256 | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $applicationDirectory 'native-provenance.json') -Encoding UTF8
 
 foreach ($runtimeFile in $runtimeFiles) {
     Copy-Item -LiteralPath (Join-Path $RuntimeDirectory $runtimeFile) -Destination $applicationDirectory
 }
 
-foreach ($launcherFile in @('launch.ps1', 'launch.vbs', 'launcher-core.ps1', 'connection-core.ps1', 'instance.ps1', 'version.ps1', 'shortcut.ps1', 'reset.ps1', 'setup.ps1', 'setup.vbs', 'phone.example.json')) {
+foreach ($launcherFile in @('launch.ps1', 'launch-session.ps1', 'launch-runtime.ps1', 'launch-view.ps1', 'launch.vbs', 'launcher-core.ps1', 'adb-process.ps1', 'configuration-store.ps1', 'connection-core.ps1', 'instance.ps1', 'version.ps1', 'shortcut.ps1', 'reset.ps1', 'setup.ps1', 'setup-session.ps1', 'setup-runtime.ps1', 'setup-view.ps1', 'setup.vbs', 'phone.example.json')) {
     Copy-Item -LiteralPath (Join-Path $repositoryDirectory ('launcher\' + $launcherFile)) -Destination $applicationDirectory
 }
 

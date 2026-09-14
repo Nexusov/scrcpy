@@ -150,13 +150,13 @@ $ownedProcessId = 0
 
 try {
     Add-Type -TypeDefinition $fakeProgram -OutputAssembly (Join-Path $testDirectory 'adb.exe') -OutputType ConsoleApplication
-    $cancellation = [hashtable]::Synchronized(@{Requested=$false})
+    $cancellation = (New-Object Threading.CancellationTokenSource)
     $worker = [powershell]::Create()
     [void]$worker.AddScript({
         param($CorePath, $RootDirectory, $Cancellation)
         . $CorePath
-        Invoke-ConnectionAdb -RootDirectory $RootDirectory -Arguments @('devices') -TimeoutMilliseconds 10000 -Cancellation $Cancellation
-    }).AddArgument((Join-Path ([IO.Path]::GetFullPath($LauncherDirectory)) 'connection-core.ps1')).AddArgument($testDirectory).AddArgument($cancellation)
+        Invoke-AdbCommand -RootDirectory $RootDirectory -Arguments @('devices') -TimeoutMilliseconds 10000 -Cancellation $Cancellation
+    }).AddArgument((Join-Path ([IO.Path]::GetFullPath($LauncherDirectory)) 'adb-process.ps1')).AddArgument($testDirectory).AddArgument($cancellation)
     $pending = $worker.BeginInvoke()
     $pidPath = Join-Path $testDirectory 'pid.txt'
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -168,7 +168,7 @@ try {
     Assert-Connection (Test-Path -LiteralPath $pidPath) 'Fake ADB did not start.'
     $ownedProcessId = [int][IO.File]::ReadAllText($pidPath)
     $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-    $cancellation.Requested = $true
+    $cancellation.Cancel()
 
     try {
         [void]$worker.EndInvoke($pending)

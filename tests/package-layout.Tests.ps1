@@ -3,7 +3,9 @@ $ErrorActionPreference = 'Stop'
 $repositoryDirectory = Split-Path -Parent $PSScriptRoot
 
 if (-not $ArchivePath) {
-    $ArchivePath = Join-Path $repositoryDirectory 'dist\scrcpy-seamless-win64.zip'
+    . (Join-Path $PSScriptRoot 'support/package-fixture.ps1')
+    $fixture = New-PackageTestFixture -RepositoryDirectory $repositoryDirectory
+    $ArchivePath = $fixture.ArchivePath
 }
 $testDirectory = Join-Path ([IO.Path]::GetTempPath()) ('scrcpy layout test ' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $testDirectory | Out-Null
@@ -86,3 +88,7 @@ foreach ($layout in @('flat','nested')) {
 }
 Write-Host 'PASS: ZIP root, privacy, checksums, relative links, real hidden VBS launches and shortcut idempotence in flat/nested paths with spaces.'
 Write-Host "Disposable test data: $testDirectory"
+
+if ($null -ne $fixture) {
+    Remove-PackageTestFixture -Directory $fixture.Directory
+}

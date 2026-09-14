@@ -34,7 +34,8 @@ function Assert-RejectedPairing {
 }
 
 try {
-    Copy-Item (Join-Path $repository 'launcher\launch.ps1'), (Join-Path $repository 'launcher\launcher-core.ps1') $temporaryDirectory
+    Copy-Item (Join-Path $repository 'launcher/adb-process.ps1'), (Join-Path $repository 'launcher/configuration-store.ps1') $temporaryDirectory
+Copy-Item (Join-Path $repository 'launcher\launch.ps1'), (Join-Path $repository 'launcher\launcher-core.ps1') $temporaryDirectory
     # The same test executable behaves as ADB or scrcpy based on its file name.
     $fakeProgram = @'
 using System;

@@ -19,7 +19,7 @@ Paths below are relative to `src/scrcpy/`.
 
 ## Validation
 
-The following checks were completed:
+The following native baseline checks were completed before the launcher refactor:
 
 - Windows x64 client build.
 - Recovery after forcibly terminating the server for a test session.
@@ -34,13 +34,17 @@ from Git.
 
 ## First-run setup wizard
 
-- `launcher/setup.ps1` and `setup.vbs`: a Windows Forms wizard with USB device
-  selection, optional Wi-Fi pairing, manual address fallback, and USB-only mode.
-- `launcher/launcher-core.ps1`: bounded ADB commands, service discovery, device
-  identity checks, and atomic configuration writes. Pairing codes are not saved.
-- `launcher/launch.ps1`: opens setup for missing or invalid settings, reuses legacy
-  settings, preserves USB priority, and clears Wi-Fi reconnection in USB-only mode.
+- `Settings.vbs` opens `launcher/setup.ps1`, which composes the settings session,
+  runtime adapter, and Windows Forms view. Older `setup.vbs` entry points remain compatible.
+- `launcher/launcher-core.ps1` handles service discovery, device identity, and pairing.
+  Shared `adb-process.ps1` and `configuration-store.ps1` own process execution and
+  persistence. Pairing codes are not saved.
+- `launcher/launch.ps1` composes the connection controller and waiting window;
+  `connection-core.ps1` preserves USB priority and selected connection mode.
 - `scripts/package.ps1`: includes the wizard and shared helpers in portable ZIPs.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for current module boundaries, cancellation,
+Retry generations, saved-state conflicts, and reset behavior.
 
 Automated checks cover authorized/unauthorized devices, emulator/network device
 exclusion, incorrect pairing, wrong-device discovery and identity, manual fallback,
@@ -48,8 +52,7 @@ legacy launch, USB priority, Wi-Fi launch, USB-only mode, cancellation, and ADB
 process timeouts. Run them on Windows PowerShell 5.1:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\launcher.Tests.ps1
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\tests\setup-ui.Tests.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
 ```
 
 These tests use disposable fake ADB/client executables. They do not replace a

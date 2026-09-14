@@ -7,6 +7,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repositoryDirectory = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'provenance.ps1')
+$sourceFingerprintBeforeBuild = Get-NativeSourceFingerprint -RepositoryDirectory $repositoryDirectory
 $sourceDirectory = Join-Path $repositoryDirectory 'src\scrcpy'
 $buildDirectory = Join-Path $repositoryDirectory '.build'
 $distributionDirectory = Join-Path $repositoryDirectory 'dist'
@@ -136,6 +138,12 @@ try {
     New-Item -ItemType Directory -Path $distributionDirectory -Force | Out-Null
     $outputExecutable = Join-Path $distributionDirectory 'scrcpy.exe'
     Copy-Item -LiteralPath $compiledExecutable -Destination $outputExecutable -Force
+
+    if ((Get-NativeSourceFingerprint -RepositoryDirectory $repositoryDirectory) -ne $sourceFingerprintBeforeBuild) {
+        throw 'Native sources changed while compilation was running. Rebuild before packaging.'
+    }
+
+    Write-NativeBuildManifest -RepositoryDirectory $repositoryDirectory -ExecutablePath $outputExecutable -SourceFingerprint $sourceFingerprintBeforeBuild
     Write-Host "Built: $outputExecutable"
     Write-Host 'This executable requires compatible runtime DLLs and the scrcpy server. The installed portable application was not modified.'
 }

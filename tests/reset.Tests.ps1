@@ -31,32 +31,51 @@ foreach ($name in @('last-run.log', 'adbkey', 'shortcut.lnk')) {
 }
 Assert-Reset (Reset-DeviceConfiguration -RootDirectory $directory -Confirmed $true) 'Empty reset failed.'
 $script:fakeProcesses = @()
-Copy-Item (Join-Path $repository 'launcher/reset.ps1') $directory
-Copy-Item (Join-Path $repository 'launcher/launcher-core.ps1') $directory
-[IO.File]::WriteAllText((Join-Path $directory 'phone.json'), '{"UsbSerial":"old","WirelessService":"adb-old-test._adb-tls-connect._tcp","ConnectionMode":"wifi"}')
-$source = [IO.File]::ReadAllText((Join-Path $repository 'launcher/setup.ps1'))
-$source = $source -replace '(?m)^        \$confirmation = .*$', "        `$confirmation = 'Yes'"
-$exercise = @'
-$previousConfiguration = $script:savedConfiguration
-Assert-Reset ($null -ne $previousConfiguration) 'Saved fixture failed to load.'
-Remove-Item -LiteralPath (Join-Path $script:setupRoot 'phone.json')
-$staleSaveRefused = $false
-try { Save-SetupConfiguration -Configuration $previousConfiguration } catch { $staleSaveRefused = $true }
-Assert-Reset $staleSaveRefused 'Another window reset was silently overwritten.'
-Assert-Reset (-not (Test-Path (Join-Path $script:setupRoot 'phone.json'))) 'Stale save restored deleted configuration.'
-$script:pairingState.Endpoint = 'pending'
-$endpoint.Text = '192.168.1.1:1'
-Reset-SetupState
-Assert-Reset (-not $script:savedConfiguration) 'UI kept saved configuration.'
-Assert-Reset (-not $script:pairingState.Count) 'UI kept draft pairing.'
-Assert-Reset (-not $endpoint.Text -and -not $pairingCode.Text -and -not $devices.Items.Count) 'UI kept stale identity inputs.'
-Assert-Reset (-not $script:setupSaved) 'Reset incorrectly completed setup.'
-Assert-Reset (-not (Test-Path (Join-Path $script:setupRoot 'phone.json'))) 'UI reset did not remove settings.'
-$script:pendingWork = @{}
-Update-SetupActions
-Assert-Reset (-not $resetSetup.Enabled) 'Busy reset button remains enabled.'
-$script:pendingWork = $null
-'@
-$source = $source.Replace('[void]$form.ShowDialog()', $exercise).Replace('exit 0', 'return').Replace('exit 1', '')
-& ([scriptblock]::Create($source)) -RootDirectory $directory
-Write-Output 'PASS: reset confirmation, active session guard, exact scope, empty reset, UI cleanup and busy state.'
+. (Join-Path $repository 'launcher/setup-session.ps1')
+. (Join-Path $repository 'launcher/setup-view.ps1')
+$configuration = [pscustomobject]@{ UsbSerial = 'old'; WirelessService = 'adb-old-test._adb-tls-connect._tcp'; ConnectionMode = 'wifi' }
+Save-PhoneConfiguration -RootDirectory $directory -Configuration $configuration
+$session = New-SetupSession -RootDirectory $directory
+$view = New-SetupView -Session $session
+
+try {
+    Assert-Reset ($null -ne $session.SavedConfiguration) 'Saved fixture failed to load.'
+    Remove-Item -LiteralPath (Join-Path $directory 'phone.json')
+    $staleSaveRefused = $false
+
+    try {
+        Save-SetupConfiguration -Session $session -Configuration $configuration
+    } catch {
+        $staleSaveRefused = $true
+    }
+
+    Assert-Reset $staleSaveRefused 'Another window reset was silently overwritten.'
+    Assert-Reset (-not (Test-Path (Join-Path $directory 'phone.json'))) 'Stale save restored deleted configuration.'
+    $session.PairingState.Endpoint = 'pending'
+    $session.Input.PairingEndpoint = '192.168.1.1:1'
+    $session.Input.PairingCode = '123456'
+    $session.PendingWork = @{}
+    Update-SetupView -View $view
+    Assert-Reset (-not $view.ResetSetup.Enabled) 'Busy reset button remains enabled.'
+    Reset-SetupState -Session $session -Confirmed $true
+    Assert-Reset ($null -ne $session.SavedConfiguration) 'Busy reset changed draft state.'
+    $session.PendingWork = $null
+    Reset-SetupState -Session $session -Confirmed $true
+    Update-SetupView -View $view
+    Assert-Reset (-not $session.SavedConfiguration) 'Session kept saved configuration.'
+    Assert-Reset (-not $session.PairingState.Count) 'Session kept draft pairing.'
+    Assert-Reset (-not $view.Endpoint.Text -and -not $view.PairingCode.Text -and -not $view.Devices.Items.Count) 'View kept stale identity inputs.'
+    Assert-Reset ($session.Outcome -eq 'Open') 'Reset incorrectly completed settings.'
+    Assert-Reset (-not (Test-Path (Join-Path $directory 'phone.json'))) 'Reset did not remove settings.'
+} finally {
+    $session.PendingWork = $null
+    Close-SetupSession -Session $session
+    Close-SetupView -View $view
+    $resolvedDirectory = [IO.Path]::GetFullPath($directory)
+
+    if ($resolvedDirectory.StartsWith([IO.Path]::GetTempPath(), [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $resolvedDirectory -Recurse -Force
+    }
+}
+
+Write-Output 'PASS: reset confirmation, active session guard, exact scope, empty reset, draft cleanup and busy state.'

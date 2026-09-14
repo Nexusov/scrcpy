@@ -55,6 +55,7 @@ a shared network. After ten seconds, the status changes to **Still waiting for
 your phone** while connection attempts continue automatically.
 
 - **Retry now** requests another check without creating another mirroring session.
+  It reloads saved settings and cancels the previous check.
 - **Settings** opens the device wizard to change your connection settings.
 - **Cancel** stops waiting. When the setup wizard is open, use its Cancel button.
 - **Open logs** opens the diagnostics folder for troubleshooting.
@@ -157,8 +158,10 @@ ADB for USB mirroring and control; OTG is disabled at build time.
 
 ## Development
 
-See the [build and packaging guide](docs/BUILD.md) and
-[implementation and validation notes](docs/CHANGES.md). The repository contains
+Start with [CONTRIBUTING.md](https://github.com/Nexusov/scrcpy/blob/main/CONTRIBUTING.md)
+for the test command and contribution workflow. See the
+[architecture](docs/ARCHITECTURE.md), [build and packaging guide](docs/BUILD.md), and
+[native implementation notes](docs/CHANGES.md). The repository contains
 source code and launch scripts; ready-to-run binaries are distributed through
 [Releases](https://github.com/Nexusov/scrcpy/releases).
 
@@ -172,5 +175,4 @@ This software uses FFmpeg libraries under LGPL-2.1-or-later. Corresponding
 [dependency sources](https://github.com/Nexusov/scrcpy/releases/latest) are provided
 alongside the portable download. Third-party license notices are included in
 `app/licenses/` in the portable package (`licenses/` in the source repository).
-
 
