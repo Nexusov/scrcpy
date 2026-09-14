@@ -138,13 +138,6 @@ For other launch errors, check `last-run.log` and `last-run-errors.log` in the
 stored locally in `app/phone.json` (beside the launcher scripts in older flat installations); pairing codes are not saved. Release archives do
 not contain personal device settings or logs.
 
-## Release and build identification
-
-The release remains **v1.0.0**. The setup window and launch log also show a build
-identifier, such as **20260914.1**, to distinguish updated packages within that
-release. Include this identifier when reporting a problem. ZIP filenames remain
-unchanged; replace the portable ZIP and its matching SHA-256 file together.
-
 ## Limitations
 
 Reconnection mode is intended for regular screen mirroring. Recording, session

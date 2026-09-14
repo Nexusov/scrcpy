@@ -5,16 +5,6 @@ which contains the ADB Wi-Fi device name of a previously paired phone.
 
 ## Implementation
 
-Portable build `20260914.1` (release `v1.0.0`) updates the PowerShell launcher:
-
-- Setup loads existing device settings and can create a shortcut independently.
-- A successful pairing can be followed by connection retries without pairing again.
-- Setup cancellation discards pending configuration results and preserves saved settings.
-- Native window startup has a 30-second deadline; device discovery remains unlimited.
-- Connection progress, a log-folder button, and a build identifier improve diagnostics.
-
-These changes do not modify the native scrcpy executable or bundled dependencies.
-
 Paths below are relative to `src/scrcpy/`.
 
 - `app/src/scrcpy.c`: adds the reconnection loop and session cleanup while retaining
