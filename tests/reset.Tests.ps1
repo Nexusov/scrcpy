@@ -23,6 +23,56 @@ $refused = $false
 try { Reset-DeviceConfiguration -RootDirectory $directory -Confirmed $true } catch { $refused = $true }
 Assert-Reset $refused 'Active native stream allowed reset.'
 Assert-Reset (Test-Path (Join-Path $directory 'phone.json')) 'Active reset deleted settings.'
+
+# Equivalent path spellings must all identify the same running application.
+$equivalentPaths = @(
+    [IO.Path]::GetFullPath((Join-Path $directory 'scrcpy.exe'))
+    (Join-Path $directory '.\scrcpy.exe')
+    (Join-Path $directory 'scrcpy.exe').Replace('\', '/')
+)
+foreach ($processPath in $equivalentPaths) {
+    $script:fakeProcesses = @([pscustomobject]@{ Path = $processPath })
+    $refused = $false
+
+    try {
+        Reset-DeviceConfiguration -RootDirectory $directory -Confirmed $true
+    } catch {
+        $refused = $true
+    }
+
+    Assert-Reset $refused ("Equivalent active process path allowed reset: $processPath")
+    Assert-Reset (Test-Path (Join-Path $directory 'phone.json')) 'Equivalent-path reset deleted settings.'
+}
+
+# A real existing Windows directory supplies an 8.3 alias when the volume supports it.
+$fileSystem = New-Object -ComObject Scripting.FileSystemObject
+try {
+    $shortRoot = $fileSystem.GetFolder($env:ProgramFiles).ShortPath
+} finally {
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($fileSystem)
+}
+$script:fakeProcesses = @([pscustomobject]@{ Path = Join-Path $shortRoot 'scrcpy.exe' })
+$refused = $false
+try {
+    Assert-DeviceResetAvailable -RootDirectory ([IO.Path]::GetFullPath($shortRoot))
+} catch {
+    $refused = $true
+}
+Assert-Reset $refused 'Short process path did not match its canonical application directory.'
+
+foreach ($unknownPath in @($null, '')) {
+    $script:fakeProcesses = @([pscustomobject]@{ Path = $unknownPath })
+    $refused = $false
+
+    try {
+        Reset-DeviceConfiguration -RootDirectory $directory -Confirmed $true
+    } catch {
+        $refused = $true
+    }
+
+    Assert-Reset $refused 'Unknown process path allowed reset.'
+    Assert-Reset (Test-Path (Join-Path $directory 'phone.json')) 'Unknown-path reset deleted settings.'
+}
 $script:fakeProcesses = @([pscustomobject]@{ Path = 'C:\OtherApp\scrcpy.exe' })
 Assert-Reset (Reset-DeviceConfiguration -RootDirectory $directory -Confirmed $true) 'Unrelated process blocked reset.'
 Assert-Reset (-not (Test-Path (Join-Path $directory 'phone.json'))) 'Reset kept config.'

@@ -146,13 +146,10 @@ function Assert-DeviceResetAvailable {
     $executablePath = [IO.Path]::GetFullPath((Join-Path $RootDirectory 'scrcpy.exe'))
     foreach ($process in @(Get-Process -Name scrcpy -ErrorAction SilentlyContinue)) {
         try {
-            $processPath = $process.Path
+            # Windows may report a DOS short path; normalize both sides equally.
+            $processPath = [IO.Path]::GetFullPath($process.Path)
         }
         catch {
-            throw 'Cannot verify whether scrcpy is running. Close any mirroring windows before resetting device setup.'
-        }
-
-        if (-not $processPath) {
             throw 'Cannot verify whether scrcpy is running. Close any mirroring windows before resetting device setup.'
         }
 
