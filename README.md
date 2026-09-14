@@ -95,8 +95,6 @@ click **Refresh**. Some phones require a manufacturer USB driver on Windows.
 3. Choose **Wi-Fi only (no USB cable)** in the wizard, enter the six-digit code,
    and complete pairing.
 
-The code is visible by default. Select **Hide pairing code** to mask it while typing.
-
 The wizard tries to discover the phone's address automatically. If discovery fails, use
 **Enter addresses manually**; see [Wi-Fi troubleshooting](#wi-fi-troubleshooting).
 No USB cable or USB debugging authorization is needed for this mode.
@@ -149,14 +147,6 @@ For other launch errors, check `last-run.log` and `last-run-errors.log` in the
 `app/` folder (beside the launcher scripts in older flat installations). Setup errors appear in the wizard. Your device settings are
 stored locally in `app/phone.json` (beside the launcher scripts in older flat installations); pairing codes are not saved. Release archives do
 not contain personal device settings or logs.
-
-### ADB remains running after closing the app
-
-This is normal: ADB uses a shared background server. scrcpy Seamless leaves it
-running so other Android tools keep their connections. You do not need to stop
-it after each use. If it prevents moving or deleting the portable folder, close
-any Android tools and run `./app/adb.exe kill-server` in PowerShell from the
-portable package folder. This stops the shared server for all ADB clients.
 
 ## Limitations
 
