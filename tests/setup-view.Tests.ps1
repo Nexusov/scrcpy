@@ -61,6 +61,69 @@ function Wait-ViewTestWorker {
     Update-SetupView -View $View
 }
 
+# Observe native selection writes and model an open list without displaying a popup.
+function Initialize-DropdownRenderProbe {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+public sealed class DropdownRenderProbe : NativeWindow, IDisposable
+{
+    private const int GetDroppedState = 0x0157;
+    private const int SetCurrentSelection = 0x014E;
+    private const int ResetContent = 0x014B;
+    public bool IsListOpen;
+    public int SelectionWrites;
+    public int ContentResets;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr argument, IntPtr unused);
+
+    // Attach to a real ComboBox handle so assertions observe its Win32 boundary.
+    public DropdownRenderProbe(IntPtr handle)
+    {
+        AssignHandle(handle);
+    }
+
+    // Simulate the native provisional selection without committing a managed edit.
+    public void SetProvisionalSelection(int index)
+    {
+        SendMessage(Handle, SetCurrentSelection, new IntPtr(index), IntPtr.Zero);
+    }
+
+    // Count destructive updates while supplying only the list-open state to WinForms.
+    protected override void WndProc(ref Message message)
+    {
+        if (message.Msg == GetDroppedState && IsListOpen)
+        {
+            message.Result = new IntPtr(1);
+            return;
+        }
+
+        if (message.Msg == SetCurrentSelection)
+        {
+            SelectionWrites++;
+        }
+
+        if (message.Msg == ResetContent)
+        {
+            ContentResets++;
+        }
+
+        base.WndProc(ref message);
+    }
+
+    // Detach before the real control is disposed.
+    public void Dispose()
+    {
+        ReleaseHandle();
+    }
+}
+'@
+}
+
 try {
     $dependencies = @{
         StartWork = { param($RootDirectory, $Operation, $Values, $PairingState) New-ViewTestWorker @PSBoundParameters }
@@ -223,6 +286,61 @@ try {
             Close-SetupView -View $view
             $view.Layout.Dispose()
         }
+    }
+
+    # A timer refresh must preserve native navigation until a selection is committed.
+    Initialize-DropdownRenderProbe
+    $session = New-SetupSession -RootDirectory $directory -Dependencies $dependencies
+    $session.Devices = @(
+        [pscustomobject]@{ Serial = 'phone-one'; Label = 'Phone one' }
+        [pscustomobject]@{ Serial = 'phone-two'; Label = 'Phone two' }
+    )
+    $session.Input.SelectedSerial = 'phone-one'
+    $view = New-SetupView -Session $session
+    $modeProbe = New-Object DropdownRenderProbe($view.Mode.Handle)
+    $deviceProbe = New-Object DropdownRenderProbe($view.Devices.Handle)
+
+    try {
+        $modeProbe.IsListOpen = $true
+        $modeProbe.SetProvisionalSelection(1)
+        $modeProbe.SelectionWrites = 0
+        $deviceProbe.IsListOpen = $true
+        $deviceProbe.SetProvisionalSelection(1)
+        $deviceProbe.SelectionWrites = 0
+
+        foreach ($refresh in 1..3) {
+            Update-SetupView -View $view
+        }
+
+        Assert-SetupView ($modeProbe.SelectionWrites -eq 0 -and $view.Mode.SelectedIndex -eq 1) 'Timer refresh overwrote navigation in the open mode list.'
+        Assert-SetupView ($deviceProbe.SelectionWrites -eq 0 -and $view.Devices.SelectedIndex -eq 1) 'Timer refresh overwrote navigation in the open device list.'
+        Assert-SetupView ($session.Input.Mode -eq 'auto' -and $session.Input.SelectedSerial -eq 'phone-one') 'Provisional navigation committed controller input.'
+
+        $previousDevices = $view.RenderedDevices
+        $session.Devices = @([pscustomobject]@{ Serial = 'phone-three'; Label = 'Phone three' })
+        $session.Input.SelectedSerial = 'phone-three'
+        $deviceProbe.ContentResets = 0
+        Update-SetupView -View $view
+        Assert-SetupView ($deviceProbe.ContentResets -eq 0 -and [object]::ReferenceEquals($view.RenderedDevices, $previousDevices)) 'Discovery replaced an open device list.'
+
+        $modeProbe.IsListOpen = $false
+        $deviceProbe.IsListOpen = $false
+        Update-SetupView -View $view
+        Assert-SetupView ($view.Mode.SelectedItem.Value -eq 'auto') 'Closing the mode list did not restore saved selection.'
+        Assert-SetupView ($view.Devices.SelectedItem.Serial -eq 'phone-three' -and $view.Devices.Items.Count -eq 1) 'Deferred discovery did not appear after closing the device list.'
+
+        $modeProbe.SelectionWrites = 0
+        $deviceProbe.SelectionWrites = 0
+        Update-SetupView -View $view
+        Assert-SetupView ($modeProbe.SelectionWrites -eq 0 -and $deviceProbe.SelectionWrites -eq 0) 'Unchanged closed lists received redundant native selection writes.'
+
+        $view.Mode.SelectedItem = @($view.Mode.Items | Where-Object { $_.Value -eq 'wifi' })[0]
+        Assert-SetupView ($session.Input.Mode -eq 'wifi') 'A committed mode selection no longer updates settings.'
+    } finally {
+        $modeProbe.Dispose()
+        $deviceProbe.Dispose()
+        Close-SetupSession -Session $session
+        Close-SetupView -View $view
     }
 
     Write-Output "PASS: $checks direct settings view/mode/recovery checks."

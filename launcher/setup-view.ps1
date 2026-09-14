@@ -353,9 +353,18 @@ function Update-SetupView {
             $control.Enabled = $actions.IsIdle
         }
 
-        $View.Mode.SelectedItem = @($View.Mode.Items | Where-Object { $_.Value -eq $session.Input.Mode })[0]
+        # Leave native hover and keyboard navigation alone while a list is open.
+        $selectedMode = @($View.Mode.Items | Where-Object { $_.Value -eq $session.Input.Mode })[0]
+        $modeNeedsSelection = -not $View.Mode.DroppedDown -and $View.Mode.SelectedItem -ne $selectedMode
 
-        if (-not [object]::ReferenceEquals($View.RenderedDevices, $session.Devices)) {
+        if ($modeNeedsSelection) {
+            $View.Mode.SelectedItem = $selectedMode
+        }
+
+        $devicesChanged = -not [object]::ReferenceEquals($View.RenderedDevices, $session.Devices)
+        $canRefreshDevices = $devicesChanged -and -not $View.Devices.DroppedDown
+
+        if ($canRefreshDevices) {
             $View.Devices.BeginUpdate()
 
             try {
@@ -373,7 +382,10 @@ function Update-SetupView {
 
         $selected = @($View.Devices.Items | Where-Object { $_.Serial -eq $session.Input.SelectedSerial })
 
-        if ($selected.Count) {
+        $deviceNeedsSelection = $selected.Count -and -not $View.Devices.DroppedDown -and
+            $View.Devices.SelectedItem -ne $selected[0]
+
+        if ($deviceNeedsSelection) {
             $View.Devices.SelectedItem = $selected[0]
         }
 
