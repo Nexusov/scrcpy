@@ -104,9 +104,13 @@ function New-SetupView {
     $wifiInstructions = New-SetupLabel ''
     $pairingCode = New-Object Windows.Forms.TextBox
     $pairingCode.MaxLength = 6
-    $pairingCode.UseSystemPasswordChar = $true
+    $pairingCode.UseSystemPasswordChar = $false
     $pairingField = New-SetupInputField -Text 'Pairing code (6 digits)' -InputControl $pairingCode
     $pairingRow = $pairingField.Row
+    $hidePairingCode = New-Object Windows.Forms.CheckBox
+    $hidePairingCode.Text = 'Hide pairing code'
+    $hidePairingCode.AutoSize = $true
+    $hidePairingCode.Dock = 'Fill'
     $manualAddresses = New-Object Windows.Forms.CheckBox
     $manualAddresses.Text = 'Enter addresses manually'
     $manualAddresses.AutoSize = $true
@@ -166,6 +170,7 @@ function New-SetupView {
         Devices = $deviceRow
         WifiInstructions = $wifiInstructions
         PairingCode = $pairingRow
+        HidePairingCode = $hidePairingCode
         ManualAddresses = $manualAddresses
         PairingAddress = $endpointRow
         PairingHint = $pairingHint
@@ -179,7 +184,7 @@ function New-SetupView {
     }
     Add-SetupLayoutRows -Layout $layout -Rows $rows
     $usbControls = @($usbInstructions, $deviceRow)
-    $wifiControls = @($wifiInstructions, $pairingRow)
+    $wifiControls = @($wifiInstructions, $pairingRow, $hidePairingCode)
     $manualControls = @($endpointRow, $pairingHint, $connectionRow, $connectionHint)
 
     $view = @{
@@ -193,6 +198,7 @@ function New-SetupView {
         Devices = $devices
         Refresh = $refresh
         PairingCode = $pairingCode
+        HidePairingCode = $hidePairingCode
         Endpoint = $endpoint
         ConnectionEndpoint = $connectionEndpoint
         ManualAddresses = $manualAddresses
@@ -212,6 +218,10 @@ function New-SetupView {
         ManualControls = $manualControls
         EditableControls = @($mode, $devices, $refresh, $pairingCode, $manualAddresses, $endpoint, $connectionEndpoint, $createShortcut, $shortcutNow, $changePhone, $resetSetup)
     }
+    # Masking is a view preference and must not change the pairing operation.
+    $hidePairingCode.Add_CheckedChanged({
+        $view.PairingCode.UseSystemPasswordChar = $view.HidePairingCode.Checked
+    }.GetNewClosure())
     $inputChanged = {
 
         if ($view.Rendering) {

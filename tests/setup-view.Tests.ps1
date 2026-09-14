@@ -89,6 +89,13 @@ try {
             Assert-SetupView $view.CreateShortcut.Visible "Shortcut option hidden for $modeName."
             Assert-SetupView (-not $view.ManualControls[0].Visible -and -not $view.Finish.Enabled) "Invalid initial fields for $modeName."
             $view.PairingCode.Text = '123456'
+            Assert-SetupView (-not $view.PairingCode.UseSystemPasswordChar) 'Pairing code is hidden by default.'
+            Assert-SetupView ($view.HidePairingCode.Visible -eq ($modeName -ne 'usb')) "Incorrect masking option visibility for $modeName."
+            $view.HidePairingCode.Checked = $true
+            Assert-SetupView $view.PairingCode.UseSystemPasswordChar 'Hide pairing code did not mask the field.'
+            Assert-SetupView ($session.Input.PairingCode -eq '123456') 'Masking changed the pairing code.'
+            $view.HidePairingCode.Checked = $false
+            Assert-SetupView (-not $view.PairingCode.UseSystemPasswordChar -and $view.PairingCode.Text -eq '123456') 'Showing the code changed its value.'
             Assert-SetupView ($view.Finish.Enabled -eq ($modeName -eq 'wifi')) "Incorrect cable requirement for $modeName."
             $countBefore = $shortcutCount
             Start-SetupWork -Session $session -Operation 'devices'
