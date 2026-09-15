@@ -117,12 +117,12 @@ $target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $wifi
 Assert-Connection ($target.Serial -eq $wifi.WirelessService) 'Discovery failure prevented saved-address connection.'
 
 Reset-Probe
-$script:advertisements = @([pscustomobject]@{Name='adb-phone123-current';Endpoint='192.168.1.10:40001'})
+$script:advertisements = @([pscustomobject]@{Name = 'adb-phone123-current'; Endpoint = '192.168.1.10:40001'; TransportName = 'adb-phone123-current._adb-tls-connect._tcp'})
 $target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $wifi
 Assert-Connection ($target.Serial -eq 'adb-phone123-current._adb-tls-connect._tcp') 'Current discovery did not replace stale wireless settings.'
 
 Reset-Probe
-$script:advertisements = @([pscustomobject]@{Name='adb-phone123-current';Endpoint='192.168.1.10:40001'})
+$script:advertisements = @([pscustomobject]@{Name = 'adb-phone123-current'; Endpoint = '192.168.1.10:40001'; TransportName = 'adb-phone123-current._adb-tls-connect._tcp'})
 $target = Find-ReadyPhone -RootDirectory 'unused' -Configuration $auto
 Assert-Connection ($target.Serial -eq 'phone123') 'Refreshing fallback stopped USB priority.'
 Assert-Connection ($target.WirelessTarget -eq 'adb-phone123-current._adb-tls-connect._tcp') 'USB startup retained a stale Wi-Fi fallback target.'

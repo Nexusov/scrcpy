@@ -8,12 +8,22 @@ $native = $null
 try {
     $fakeProgram = @'
 using System;
+using System.Threading;
 public static class NativeAdapterFixture {
     public static void Main(string[] arguments) {
         Console.WriteLine("reconnect=" + Environment.GetEnvironmentVariable("SCRCPY_RECONNECT_SERIAL"));
         Console.WriteLine("adb=" + Environment.GetEnvironmentVariable("ADB"));
         Console.WriteLine("arguments=" + String.Join("|", arguments));
         Console.Error.WriteLine("fixture diagnostic");
+        if (Array.IndexOf(arguments, "--window-title=wait-for-stop") >= 0) {
+            using (var stop = EventWaitHandle.OpenExisting(Environment.GetEnvironmentVariable("SCRCPY_STOP_EVENT"))) {
+                if (!stop.WaitOne(3000)) { Environment.Exit(4); }
+                Console.WriteLine("graceful-stop-complete");
+            }
+        }
+        if (Array.IndexOf(arguments, "--window-title=ignore-stop") >= 0) {
+            Thread.Sleep(10000);
+        }
     }
 }
 '@
@@ -48,9 +58,81 @@ public static class NativeAdapterFixture {
             throw 'Native adapter changed the parent process environment.'
         }
 
+        if (-not $log.Contains('--window-title=Phone-Seamless') -or -not $log.Contains('--pause-on-exit=false')) {
+            throw 'Default launcher title or noninteractive exit policy was lost.'
+        }
+
         if ((Get-Content (Join-Path $directory 'last-run-errors.log') -Raw).Trim() -ne 'fixture diagnostic') {
             throw 'Native error stream was not drained.'
         }
+    }
+
+    # Pass user values as individual native arguments, including Windows quoting edge cases.
+    $settings = @{
+        Reconnect = $false
+        Options = @{ 'window-title' = 'A "quoted" title'; 'record' = 'C:\Videos\my clip.mkv'; 'max-fps' = '60'; 'no-window' = $true }
+    }
+    Set-Content $logPath 'fixture'
+    $native = New-LaunchNativeProcess -RootDirectory $directory -Configuration $configuration -Target $target -Settings $settings
+    $null = $native.Process.WaitForExit(3000)
+
+    if ($native.ExpectsWindow) {
+        throw 'A no-window session incorrectly requires a native window.'
+    }
+
+    Close-LaunchNativeResources -Native $native
+    $native = $null
+    $log = Get-Content $logPath -Raw
+
+    if ($log.Contains('--window-title=Phone-Seamless')) {
+        throw 'Custom title received a duplicate launcher default.'
+    }
+
+    foreach ($argument in @('--window-title=A "quoted" title', '--record=C:\Videos\my clip.mkv', '--max-fps=60', '--no-window')) {
+
+        if (-not $log.Contains($argument)) {
+            throw "Native argument did not round-trip: $argument"
+        }
+    }
+
+    if (-not $log.Contains('reconnect=' + [Environment]::NewLine)) {
+        throw 'Disabling reconnection left the native reconnect environment set.'
+    }
+
+    # An owned stop request lets the child drain and finalize before its resources close.
+    Set-Content $logPath 'fixture'
+    $settings = @{ Reconnect = $true; Options = @{ 'window-title' = 'wait-for-stop' } }
+    $native = New-LaunchNativeProcess -RootDirectory $directory -Configuration $configuration -Target $target -Settings $settings
+    $stopEvent = $native.StopEvent
+    Close-LaunchNativeResources -Native $native
+    $native = $null
+    $log = Get-Content $logPath -Raw
+
+    if (-not $log.Contains('graceful-stop-complete')) {
+        throw 'Shutdown killed the child without waiting for graceful finalization.'
+    }
+
+    $disposed = $false
+
+    try {
+        $null = $stopEvent.Set()
+    } catch [ObjectDisposedException] {
+        $disposed = $true
+    }
+
+    if (-not $disposed) {
+        throw 'Shutdown leaked the owned stop event.'
+    }
+
+    # A broken child cannot block launcher cleanup indefinitely; its forced stop is explicit in logs.
+    $settings.Options['window-title'] = 'ignore-stop'
+    $native = New-LaunchNativeProcess -RootDirectory $directory -Configuration $configuration -Target $target -Settings $settings
+    $native.ShutdownTimeoutMilliseconds = 100
+    Close-LaunchNativeResources -Native $native
+    $native = $null
+
+    if (-not (Get-Content (Join-Path $directory 'last-run-errors.log') -Raw).Contains('An active recording may be incomplete.')) {
+        throw 'Forced shutdown did not report the recording finalization risk.'
     }
 
     Remove-Item -LiteralPath (Join-Path $directory 'scrcpy.exe')

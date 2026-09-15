@@ -20,9 +20,16 @@ Expand-Archive -LiteralPath $ArchivePath -DestinationPath (Join-Path $testDirect
 $packageDirectory = Join-Path $testDirectory 'package'
 $rootNames = @(Get-ChildItem -LiteralPath $packageDirectory | Select-Object -ExpandProperty Name | Sort-Object)
 Assert-Layout (($rootNames -join '|') -eq 'app|LICENSE|README.md|Settings.vbs|Start.vbs|THIRD_PARTY.md') 'Unexpected public package entries.'
-Assert-Layout (-not (Get-ChildItem $packageDirectory -Recurse -File | Where-Object { $_.Name -eq 'phone.json' -or $_.Extension -eq '.log' })) 'Private files in ZIP.'
+Assert-Layout (-not (Get-ChildItem $packageDirectory -Recurse -File | Where-Object { $_.Name -in @('phone.json', 'scrcpy-settings.json') -or $_.Extension -eq '.log' })) 'Private files in ZIP.'
+foreach ($settingsFile in @('option-catalog.ps1', 'option-catalog.json', 'options-store.ps1', 'options-view.ps1', 'diagnostics-runtime.ps1', 'diagnostics-view.ps1')) {
+    Assert-Layout (Test-Path -LiteralPath (Join-Path $packageDirectory ('app/' + $settingsFile))) "Missing settings dependency: $settingsFile"
+}
 $expectedHash = ((Get-Content ($ArchivePath + '.sha256') -Raw).Trim() -split '\s+')[0]
 Assert-Layout ((Get-FileHash $ArchivePath).Hash -eq $expectedHash) 'Checksum mismatch.'
+$nativeProvenance = Get-Content (Join-Path $packageDirectory 'app/native-provenance.json') -Raw | ConvertFrom-Json
+Assert-Layout ($nativeProvenance.Origin -in @('local-build', 'imported-baseline')) 'Native build origin is missing.'
+Assert-Layout ($nativeProvenance.SourceFingerprint -match '^[a-fA-F0-9]{64}$') 'Native source fingerprint is missing.'
+Assert-Layout ($nativeProvenance.Sha256 -eq (Get-FileHash (Join-Path $packageDirectory 'app/scrcpy.exe')).Hash) 'Native provenance does not identify the packaged executable.'
 foreach ($document in @('README.md','THIRD_PARTY.md')) {
     $markdown = Get-Content (Join-Path $packageDirectory $document) -Raw
     foreach ($match in [regex]::Matches($markdown, '\]\(([^)]+)\)')) {

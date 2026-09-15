@@ -52,6 +52,7 @@ src = [
     'src/util/file.c',
     'src/util/intmap.c',
     'src/util/intr.c',
+    'src/util/launcher_stop.c',
     'src/util/log.c',
     'src/util/memory.c',
     'src/util/net.c',
@@ -224,12 +225,23 @@ endif
 # do not build tests in release (assertions would not be executed at all)
 if get_option('buildtype') == 'debug'
     tests = [
+        ['test_thread_timedwait', [
+            'tests/test_thread_timedwait.c',
+        ]],
         ['test_adb_parser', [
             'tests/test_adb_parser.c',
             'src/adb/adb_device.c',
             'src/adb/adb_parser.c',
             'src/util/str.c',
             'src/util/strbuf.c',
+        ]],
+        ['test_launcher_stop', [
+            'tests/test_launcher_stop.c',
+            'src/util/launcher_stop.c',
+            'src/events.c',
+            'src/util/thread.c',
+            'src/util/tick.c',
+            'src/util/log.c',
         ]],
         ['test_binary', [
             'tests/test_binary.c',

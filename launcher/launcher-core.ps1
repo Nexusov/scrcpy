@@ -63,7 +63,8 @@ function Get-AdbServices {
             $name = $name.Substring(0, $name.Length - $suffix.Length)
         }
 
-        [pscustomobject]@{ Name = $name; Endpoint = $fields[2] }
+        # ADB transport identifiers retain the advertised DNS root dot.
+        [pscustomobject]@{ Name = $name; Endpoint = $fields[2]; TransportName = $name + '.' + $fields[1] }
     }
 }
 

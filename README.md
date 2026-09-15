@@ -3,6 +3,9 @@
 Mirror and control your Android phone on Windows. Connect by USB, Wi-Fi, or both;
 when a USB connection drops, Wi-Fi fallback restores mirroring in the same window.
 
+Adjust picture quality, FPS, sound, and advanced scrcpy options in a searchable
+Settings window. No terminal commands or knowledge of CLI flags are required.
+
 An independent fork of [scrcpy 4.0](https://github.com/Genymobile/scrcpy), not an
 official [Genymobile](https://github.com/genymobile) release.
 
@@ -34,6 +37,46 @@ repeating Wi-Fi pairing when a saved Wi-Fi configuration is available. Use
 **Set up another phone** to configure another device. If the phone has forgotten this PC,
 pair it again. Creating a shortcut does not require the phone to be connected.
 
+## Adjust picture, sound, and other options
+
+Open **Settings.vbs**. The **Connection** tab manages your phone; the
+**Mirroring** tab contains video bit rate, maximum resolution, maximum FPS,
+audio, and the Seamless reconnection switch. Blank fields use scrcpy defaults;
+installing this update does not lower quality or impose an FPS cap.
+
+For example, set maximum resolution to `1280`, video bit rate to `4M`, and
+maximum FPS to `60`. FPS is an upper limit: it cannot make a 30 FPS video produce
+60 different frames. Click **Save mirroring settings**, then restart mirroring.
+The phone does not need to be connected to save these options.
+
+The **Advanced** tab exposes the full scrcpy 4.0 option catalogue, grouped by
+video, audio, window, input, camera, recording, and technical settings. Search by
+name, CLI flag, or description, then select a parameter to view its explanation
+and edit its value. Only the selected advanced editor is displayed, keeping the
+window responsive without hiding available options. Switching between parameters
+keeps your unsaved changes; click **Save mirroring settings** to apply them.
+Informational actions such as listing encoders and cameras open a results window
+instead of saving a launch flag. Device lists require saved setup and a connected
+phone; help and version work offline.
+
+For camera capture, select `camera` as **Video source** in Advanced, then choose
+camera options. For recording, disable Seamless reconnection in Mirroring and
+set a recording filename in Advanced. Relative filenames are saved in `app/`;
+you can also enter an absolute path. The folder must exist and be writable.
+With **No window** enabled, the launcher stays visible so you can stop the
+session. It requests normal shutdown so recording can finish writing its file.
+
+Some combinations need Seamless reconnection disabled, including recording,
+session time limits, and modes without video playback. Settings explains common
+conflicts before saving; scrcpy still checks device-specific capabilities at
+launch. Options controlled by the connection wizard and features unavailable in
+this Windows build remain visible with an explanation rather than editable.
+
+**Restore mirroring defaults** resets the draft in the current window. Click
+**Save mirroring settings** to apply it. This does not reset your phone pairing.
+Closing without saving discards mirroring edits. Preferences are stored in
+`app/scrcpy-settings.json`, separately from `app/phone.json`.
+
 ## Reset device settings
 
 Open **`Settings.vbs`** and choose **Reset device setup...** to remove the saved
@@ -41,7 +84,7 @@ phone and connection configuration. Close any running mirroring window first,
 then confirm the reset. You can configure a phone again immediately or on the
 next launch. If a connection window is already waiting, finish saving your new settings, then click **Retry now** in that window.
 
-Reset keeps your desktop shortcut, logs, and shared ADB keys. It does not remove
+Reset keeps your mirroring preferences, desktop shortcut, logs, and shared ADB keys. It does not remove
 pairing from the phone or affect other ADB applications. To forget this PC on the
 phone as well, open **Wireless debugging > Paired devices**, select the PC, and
 choose **Forget**.
@@ -104,7 +147,7 @@ wizard. Settings are saved for later launches.
 
 ## What happens when the cable is removed?
 
-In **USB + Wi-Fi** mode, the mirroring window stays open, keeps the last frame
+In **USB + Wi-Fi** mode with Seamless reconnection enabled, the mirroring window stays open, keeps the last frame
 visible, and shows `Reconnecting...` while waiting for the phone. Video, audio,
 and control resume after reconnection. Wi-Fi must remain available on both devices.
 
@@ -123,6 +166,13 @@ ADB and the required runtime libraries are included in the portable ZIP. Build
 tools are not needed.
 
 ## Wi-Fi troubleshooting
+
+**Low FPS or choppy audio over Wi-Fi:** compare the same video over USB first.
+If USB is smooth, try your router's 2.4 GHz network. On 5 GHz, try a fixed
+channel width of 40 or 80 MHz instead of Auto, if available. Change one setting
+at a time and restore it if there is no improvement: a wider channel is not
+necessarily smoother. Wi-Fi may reconnect after a change; check the Wireless
+debugging address again.
 
 **Pairing cannot find the phone:** choose **Enter addresses manually** and copy
 **Pairing IP:port** from the phone's pairing-code dialog. Enter a fresh code if
@@ -151,8 +201,14 @@ not contain personal device settings or logs.
 ## Limitations
 
 Reconnection mode is intended for regular screen mirroring. Recording, session
-time limits, and OTG/AOA are not supported in this mode. The portable build uses
-ADB for USB mirroring and control; OTG is disabled at build time.
+time limits, and modes without video playback require disabling Seamless
+reconnection. The portable build uses ADB for USB mirroring and control; OTG/AOA
+is disabled at build time. V4L2 output requires Linux. Changing advanced settings
+does not enable features missing from your phone or this build.
+
+If a native session cannot finish shutdown within ten seconds, the launcher
+forces it to exit and records a warning in `last-run-errors.log`. An active
+recording may be incomplete in that case.
 
 ## Development
 

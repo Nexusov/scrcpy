@@ -196,6 +196,47 @@ function Find-ReadyPhone {
     Assert-Launch (Request-LaunchClose -Session $session) 'Waiting close was rejected.'
     Close-LaunchSession -Session $session
     Assert-Launch ($session.Phase -eq 'Closing' -and $null -eq $session.Probe) 'Shutdown kept active discovery.'
+
+    # Headless sessions retain a visible stop surface and do not inherit the window deadline.
+    foreach ($exitCode in @(0, 1)) {
+        $testState.Saved = New-LaunchTestConfiguration 'phone-A'
+        $session = New-LaunchSession -RootDirectory $directory -Dependencies $dependencies
+        $native = @{ Process = New-LaunchTestProcess; ExpectsWindow = $false }
+        $session.Native = $native
+        $session.NativeStarted = [DateTime]::UtcNow.AddSeconds(-60)
+        $session.Phase = 'Starting'
+        Update-LaunchSession -Session $session
+        Assert-Launch ($session.Phase -eq 'Running' -and $session.Presentation.Visible) 'Headless native session timed out or hid its stop window.'
+        $native.Process.ExitCode = $exitCode
+        $native.Process.HasExited = $true
+        Update-LaunchSession -Session $session
+        $expectedPhase = 'Closing'
+
+        if ($exitCode) {
+            $expectedPhase = 'Failed'
+        }
+
+        Assert-Launch ($session.Phase -eq $expectedPhase -and $native.Process.Disposed) 'Headless exit did not preserve success versus failure.'
+        Close-LaunchSession -Session $session
+    }
+
+    # A headless action may finish before the first controller tick.
+    $session = New-LaunchSession -RootDirectory $directory -Dependencies $dependencies
+    $native = @{ Process = New-LaunchTestProcess; ExpectsWindow = $false }
+    $native.Process.HasExited = $true
+    $session.Native = $native
+    $session.Phase = 'Starting'
+    Update-LaunchSession -Session $session
+    Assert-Launch ($session.Phase -eq 'Closing') 'Successful short headless action was reported as a missing window.'
+    Close-LaunchSession -Session $session
+
+    # Invalid option files expose Settings instead of closing the launcher before its UI exists.
+    $dependencies.GetSettings = { param($RootDirectory) throw 'invalid fixture settings' }
+    $session = New-LaunchSession -RootDirectory $directory -Dependencies $dependencies
+    $presentation = Get-LaunchPresentation -Session $session
+    Assert-Launch ($session.Phase -eq 'Failed' -and $presentation.SettingsEnabled -and $presentation.Visible) 'Malformed settings did not expose a recoverable Settings route.'
+    Assert-Launch ($testState.Log -eq 'invalid fixture settings') 'Malformed settings error was not recorded.'
+    Close-LaunchSession -Session $session
     Write-Output "$checks direct launch-controller assertions passed."
 } finally {
 

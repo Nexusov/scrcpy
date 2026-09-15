@@ -1,13 +1,15 @@
 . (Join-Path $PSScriptRoot 'launcher-core.ps1')
 . (Join-Path $PSScriptRoot 'connection-core.ps1')
+. (Join-Path $PSScriptRoot 'options-store.ps1')
 
 # Connect controller operations to process and persistence adapters.
 function New-LaunchDependencies {
     return @{
         GetConfiguration = { param($RootDirectory) Get-PhoneConfiguration -RootDirectory $RootDirectory }
+        GetSettings = { param($RootDirectory) Get-ScrcpySettings -RootDirectory $RootDirectory }
         ConfigurationLock = { param($RootDirectory, $Action) Invoke-DeviceConfigurationLock -RootDirectory $RootDirectory -Action $Action }
         StartProbe = { param($RootDirectory, $Configuration, $Cancellation, $Progress) New-LaunchProbeWorker -RootDirectory $RootDirectory -Configuration $Configuration -Cancellation $Cancellation -Progress $Progress }
-        StartNative = { param($RootDirectory, $Configuration, $Target) New-LaunchNativeProcess -RootDirectory $RootDirectory -Configuration $Configuration -Target $Target }
+        StartNative = { param($RootDirectory, $Configuration, $Target, $Settings) New-LaunchNativeProcess -RootDirectory $RootDirectory -Configuration $Configuration -Target $Target -Settings $Settings }
         CloseNative = { param($Native) Close-LaunchNativeResources -Native $Native }
         StartSettings = { param($RootDirectory) Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-WindowStyle', 'Hidden', '-File', ('"' + (Join-Path $RootDirectory 'setup.ps1') + '"')) -WindowStyle Hidden -PassThru }
         Log = { param($RootDirectory, $Message) Add-Content -LiteralPath (Join-Path $RootDirectory 'last-run.log') -Value $Message }
@@ -36,18 +38,34 @@ function New-LaunchProbeWorker {
 
 # Open one owned native client with process-local environment and asynchronous logs.
 function New-LaunchNativeProcess {
-    param($RootDirectory, $Configuration, $Target)
+    param($RootDirectory, $Configuration, $Target, $Settings)
+
+    if ($null -eq $Settings) {
+        $Settings = Get-ScrcpySettings -RootDirectory $RootDirectory
+    }
+
     $native = @{
         Process = $null
         OutputFile = $null
         ErrorFile = $null
         OutputCopy = $null
         ErrorCopy = $null
+        ExpectsWindow = -not $Settings.Options['no-window']
+        StopEvent = $null
+        ShutdownTimeoutMilliseconds = 10000
     }
     $startInfo = New-Object Diagnostics.ProcessStartInfo
     $startInfo.FileName = Join-Path $RootDirectory 'scrcpy.exe'
     $startInfo.WorkingDirectory = $RootDirectory
-    $startInfo.Arguments = '-s "' + $Target.Serial + '" --window-title=Phone-Seamless --pause-on-exit=false'
+    $arguments = @('-s', [string]$Target.Serial)
+    $arguments += @(Get-ScrcpyArguments -Settings $Settings)
+
+    if (-not $Settings.Options.ContainsKey('window-title')) {
+        $arguments += '--window-title=Phone-Seamless'
+    }
+
+    $arguments += '--pause-on-exit=false'
+    $startInfo.Arguments = ConvertTo-ScrcpyCommandLine -Arguments $arguments
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
@@ -56,11 +74,16 @@ function New-LaunchNativeProcess {
     $startInfo.EnvironmentVariables['ADB_MDNS_OPENSCREEN'] = '1'
     $startInfo.EnvironmentVariables.Remove('SCRCPY_RECONNECT_SERIAL')
 
-    if ((Get-ConnectionMode -Configuration $Configuration) -ne 'usb') {
+    $canReconnect = $Settings.Reconnect -and (Get-ConnectionMode -Configuration $Configuration) -ne 'usb'
+
+    if ($canReconnect) {
         $startInfo.EnvironmentVariables['SCRCPY_RECONNECT_SERIAL'] = $Target.WirelessTarget
     }
 
     try {
+        $stopEventName = 'Local\scrcpy-stop-' + [guid]::NewGuid().ToString('N')
+        $native.StopEvent = New-Object Threading.EventWaitHandle($false, [Threading.EventResetMode]::ManualReset, $stopEventName)
+        $startInfo.EnvironmentVariables['SCRCPY_STOP_EVENT'] = $stopEventName
         $native.OutputFile = [IO.File]::Open((Join-Path $RootDirectory 'last-run.log'), 'Append', 'Write', 'ReadWrite')
         $native.ErrorFile = [IO.File]::Open((Join-Path $RootDirectory 'last-run-errors.log'), 'Create', 'Write', 'ReadWrite')
         $native.Process = [Diagnostics.Process]::Start($startInfo)
@@ -83,10 +106,21 @@ function Close-LaunchNativeResources {
 
     try {
         $process = $Native.Process
+        $forced = $false
 
         if ($null -ne $process -and -not $process.HasExited) {
-            $process.Kill()
-            $process.WaitForExit()
+            $stopped = $false
+
+            if ($null -ne $Native.StopEvent) {
+                $null = $Native.StopEvent.Set()
+                $stopped = $process.WaitForExit($Native.ShutdownTimeoutMilliseconds)
+            }
+
+            if (-not $stopped) {
+                $forced = $true
+                $process.Kill()
+                $process.WaitForExit()
+            }
         }
 
         foreach ($name in @('OutputCopy', 'ErrorCopy')) {
@@ -95,8 +129,13 @@ function Close-LaunchNativeResources {
                 $null = $Native[$name].GetAwaiter().GetResult()
             }
         }
+
+        if ($forced -and $null -ne $Native.ErrorFile) {
+            $message = [Text.Encoding]::UTF8.GetBytes("Native shutdown timed out; forced exit. An active recording may be incomplete.`r`n")
+            $Native.ErrorFile.Write($message, 0, $message.Length)
+        }
     } finally {
-        foreach ($name in @('OutputFile', 'ErrorFile', 'Process')) {
+        foreach ($name in @('OutputFile', 'ErrorFile', 'Process', 'StopEvent')) {
 
             if ($null -ne $Native[$name]) {
                 $Native[$name].Dispose()

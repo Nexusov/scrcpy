@@ -340,14 +340,6 @@ scrcpy(struct scrcpy_options *options) {
 #endif
     struct scrcpy *s = &scrcpy;
 
-    // Minimal SDL initialization
-    if (!SDL_Init(SDL_INIT_EVENTS)) {
-        LOGE("Could not initialize SDL: %s", SDL_GetError());
-        return SCRCPY_EXIT_FAILURE;
-    }
-
-    atexit(SDL_Quit);
-
     const char *reconnect_serial = getenv("SCRCPY_RECONNECT_SERIAL");
     bool reconnect = reconnect_serial && *reconnect_serial;
     bool incompatible = !options->window || !options->video_playback

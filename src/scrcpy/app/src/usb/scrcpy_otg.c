@@ -67,20 +67,12 @@ scrcpy_otg(struct scrcpy_options *options) {
 
     sc_sdl_set_hints(options->render_driver, options->disable_screensaver);
 
-    // Minimal SDL initialization
-    if (!SDL_Init(SDL_INIT_EVENTS)) {
-        LOGE("Could not initialize SDL: %s", SDL_GetError());
-        return SCRCPY_EXIT_FAILURE;
-    }
-
     if (options->gamepad_input_mode != SC_GAMEPAD_INPUT_MODE_DISABLED) {
         if (!SDL_Init(SDL_INIT_GAMEPAD)) {
             LOGE("Could not initialize SDL gamepad: %s", SDL_GetError());
             // Not fatal, keyboard/mouse should still work
         }
     }
-
-    atexit(SDL_Quit);
 
     enum scrcpy_exit_code ret = SCRCPY_EXIT_FAILURE;
 

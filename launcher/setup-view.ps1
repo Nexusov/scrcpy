@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot 'options-view.ps1')
+
 # Create a consistently docked explanatory label.
 function New-SetupLabel {
     param([string]$Text)
@@ -62,7 +64,17 @@ function New-SetupView {
     $scrollPanel = New-Object Windows.Forms.Panel
     $scrollPanel.Dock = 'Fill'
     $scrollPanel.AutoScroll = $true
-    $form.Controls.Add($scrollPanel)
+    $tabs = New-Object Windows.Forms.TabControl
+    $tabs.Dock = 'Fill'
+    $connectionPage = New-Object Windows.Forms.TabPage
+    $connectionPage.Text = 'Connection'
+    $tabs.TabPages.Add($connectionPage)
+    $connectionPage.Controls.Add($scrollPanel)
+    $form.Controls.Add($tabs)
+    $optionsView = New-OptionsView -Tabs $tabs -RootDirectory $Session.RootDirectory
+    $form.Controls.Add($optionsView.Footer)
+    $optionsView.Footer.Visible = $false
+    $tabs.Add_SelectedIndexChanged({ $optionsView.Footer.Visible = $tabs.SelectedIndex -ne 0 }.GetNewClosure())
     $layout = New-Object Windows.Forms.TableLayoutPanel
     $layout.Dock = 'Top'
     $layout.AutoSize = $true
@@ -189,6 +201,8 @@ function New-SetupView {
 
     $view = @{
         Session = $Session
+        Tabs = $tabs
+        Options = $optionsView
         Form = $form
         Layout = $layout
         Panel = $scrollPanel
@@ -275,6 +289,15 @@ function New-SetupView {
     $cancel.Add_Click({ $view.Form.Close() }.GetNewClosure())
     $form.Add_FormClosing({
         param($sender, $eventArguments)
+
+        if (Test-OptionsViewDirty -View $view.Options) {
+            $discard = [Windows.Forms.MessageBox]::Show($view.Form, 'Discard unsaved mirroring settings? Use Save mirroring settings to apply them before closing.', 'Unsaved mirroring settings', 'YesNo', 'Question', 'Button2')
+
+            if ($discard -ne 'Yes') {
+                $eventArguments.Cancel = $true
+                return
+            }
+        }
 
         if ($view.Session.Outcome -eq 'Saved') {
             return
@@ -407,6 +430,11 @@ function Complete-SetupView {
         return
     }
 
+    if (Test-OptionsViewDirty -View $View.Options) {
+        $View.Options.Status.Text = 'Device setup saved. Save your mirroring changes, or close to discard them.'
+        return
+    }
+
     if ($View.Session.Warning) {
         [void][Windows.Forms.MessageBox]::Show($View.Form, $View.Session.Warning, 'scrcpy Seamless - Shortcut', 'OK', 'Warning')
         $View.Session.Warning = ''
@@ -423,6 +451,7 @@ function Close-SetupView {
     $View.Timer.Dispose()
     $View.Rendering = $true
     $View.PairingCode.Clear()
+    $View.Options.Tooltip.Dispose()
     $View.Form.Dispose()
 }
 

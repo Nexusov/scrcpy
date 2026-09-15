@@ -42,7 +42,7 @@ $applicationDirectory = Join-Path $stagingDirectory 'app'
 New-Item -ItemType Directory -Path $applicationDirectory -Force | Out-Null
 Copy-Item -LiteralPath $nativeClient.Path -Destination (Join-Path $applicationDirectory 'scrcpy.exe')
 Copy-Item -LiteralPath $manifestPath -Destination $applicationDirectory
-$nativeClient | Select-Object Origin, SourceFingerprint, Sha256 | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $applicationDirectory 'native-provenance.json') -Encoding UTF8
+[pscustomobject]$nativeClient | Select-Object Origin, SourceFingerprint, Sha256 | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $applicationDirectory 'native-provenance.json') -Encoding UTF8
 
 foreach ($runtimeFile in $runtimeFiles) {
     Copy-Item -LiteralPath (Join-Path $RuntimeDirectory $runtimeFile) -Destination $applicationDirectory
@@ -53,6 +53,10 @@ foreach ($launcherFile in @('launch.ps1', 'launch-session.ps1', 'launch-runtime.
 }
 
 # Keep only the public entry points beside the user documentation.
+foreach ($settingsFile in @('option-catalog.ps1', 'option-catalog.json', 'options-store.ps1', 'options-view.ps1', 'diagnostics-runtime.ps1', 'diagnostics-view.ps1')) {
+    Copy-Item -LiteralPath (Join-Path $repositoryDirectory ('launcher\' + $settingsFile)) -Destination $applicationDirectory
+}
+
 Copy-Item -LiteralPath (Join-Path $repositoryDirectory 'launcher\Start.vbs') -Destination $stagingDirectory
 Copy-Item -LiteralPath (Join-Path $repositoryDirectory 'launcher\Settings.vbs') -Destination (Join-Path $stagingDirectory 'Settings.vbs')
 

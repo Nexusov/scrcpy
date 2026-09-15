@@ -21,7 +21,7 @@ function Get-CurrentWirelessTarget {
         $services = @(Get-PhoneWirelessServices -RootDirectory $RootDirectory -Cancellation $Cancellation -UsbSerial $Configuration.UsbSerial)
 
         if ($services.Count -eq 1) {
-            return $services[0].Name + '._adb-tls-connect._tcp'
+            return $services[0].TransportName
         }
     } catch [OperationCanceledException] {
         throw

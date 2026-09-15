@@ -34,6 +34,7 @@ processes. A session can therefore be tested without creating a form.
 | `Probing` | One device discovery worker is active. |
 | `Starting` | The native process exists; its window has not appeared. |
 | `Streaming` | The native window is visible and owns mirroring. |
+| `Running` | A headless native session is active; the launcher remains available to stop it. |
 | `Settings` | The Settings child owns the configuration interaction. |
 | `Failed` | Automatic attempts are paused until an explicit user action. |
 | `Closing` | No new work may start; owned resources are released. |
@@ -74,11 +75,35 @@ pairing, logs, and desktop shortcuts.
 
 ## Sources of truth
 
+Mirroring preferences live separately in `scrcpy-settings.json`, with an explicit
+schema version, an options dictionary, and the reconnection policy. The catalogue
+in `launcher/option-catalog.json` describes all native long options; its coverage
+test detects additions or removals in `cli.c`. The small catalogue loader returns
+fresh metadata, while `options-store.ps1` owns validation, atomic persistence,
+concurrency checks, and Windows argument quoting. No user text is evaluated as
+shell code. Device reset does not delete these preferences.
+
+`options-view.ps1` retains editors and their unsaved values, but mounts only the
+selected advanced editor beside a searchable list. This bounds expensive nested
+WinForms layout work independently of the catalogue size. Filtering changes the
+list without discarding edits. Detached editors are disposed with the view.
+Informational actions run through
+`diagnostics-runtime.ps1` in an owned cancellable runspace; their results appear
+in `diagnostics-view.ps1`. They are never persisted as stream flags.
+
+For graceful termination, the runtime gives its child a unique Windows event
+name through `SCRCPY_STOP_EVENT`. Native `util/launcher_stop` translates that
+request to `SDL_EVENT_QUIT`, using the same teardown path as closing the native
+window. The monitor joins before SDL teardown. The launcher waits up to ten
+seconds and logs any forced fallback; only its own child is affected.
+
 | Concern | Owner |
 | --- | --- |
 | Mode inference, configuration validation, locking, save/reset | `configuration-store.ps1` |
 | ADB arguments, timeout, cancellation, and child cleanup | `adb-process.ps1` |
 | Connection selection and status hints | `connection-core.ps1` |
+| Option labels, native flags, types and availability | `option-catalog.json` |
+| Mirroring validation, persistence and argument encoding | `options-store.ps1` |
 | Discovery and pairing protocol | `launcher-core.ps1` |
 | Release labels and reviewed native/runtime hashes | `release-manifest.json` |
 | Native build identity and package selection | `scripts/provenance.ps1` |

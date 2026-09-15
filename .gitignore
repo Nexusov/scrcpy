@@ -9,6 +9,7 @@
 
 # Device-specific settings and local diagnostics.
 phone.json
+scrcpy-settings.json
 *.log
 *.pid
 *.lnk

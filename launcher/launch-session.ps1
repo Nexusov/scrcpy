@@ -5,16 +5,25 @@
 function New-LaunchSession {
     param([string]$RootDirectory, [hashtable]$Dependencies)
     $configuration = & $Dependencies.GetConfiguration $RootDirectory
+    $settingsError = ''
+
+    try {
+        $settings = & $Dependencies.GetSettings $RootDirectory
+    } catch {
+        $settings = @{ Options = @{}; Reconnect = $true }
+        $settingsError = $_.Exception.Message
+    }
     $hint = 'Complete Settings to connect your phone.'
 
     if ($null -ne $configuration) {
         $hint = Get-ConnectionHint -Mode (Get-ConnectionMode -Configuration $configuration)
     }
 
-    return @{
+    $session = @{
         RootDirectory = $RootDirectory
         Dependencies = $Dependencies
         Configuration = $configuration
+        Settings = $settings
         Phase = 'Waiting'
         Generation = 0
         Probe = $null
@@ -37,6 +46,14 @@ function New-LaunchSession {
             NativeStartupSeconds = 30
         }
     }
+
+    if ($settingsError) {
+        $session.SettingsRequested = $false
+        Set-LaunchFailure -Session $session -Message 'Saved scrcpy settings are invalid. Open Settings to correct them.'
+        & $Dependencies.Log $RootDirectory $settingsError
+    }
+
+    return $session
 }
 
 # Expose presentation data without leaking controls into connection decisions.
@@ -86,6 +103,7 @@ function Request-LaunchRetry {
 
     $Session.Progress = [hashtable]::Synchronized(@{ Status = '' })
     $Session.Configuration = & $Session.Dependencies.GetConfiguration $Session.RootDirectory
+    $Session.Settings = & $Session.Dependencies.GetSettings $Session.RootDirectory
 
     if ($null -eq $Session.Configuration) {
         Set-LaunchFailure -Session $Session -Message 'Complete Settings, then retry.'
@@ -210,7 +228,8 @@ function Accept-LaunchProbe {
             return
         }
 
-        $Session.Native = & $Session.Dependencies.StartNative $Session.RootDirectory $configuration $Target
+        $Session.Settings = & $Session.Dependencies.GetSettings $Session.RootDirectory
+        $Session.Native = & $Session.Dependencies.StartNative $Session.RootDirectory $configuration $Target $Session.Settings
         $Session.NativeStarted = [DateTime]::UtcNow
         $Session.Phase = 'Starting'
         $Session.Presentation.Status = 'Opening your phone screen...'
@@ -308,15 +327,27 @@ function Update-LaunchSession {
         $process.Refresh()
 
         if ($process.HasExited) {
+            $exitCode = $process.ExitCode
+            $expectsWindow = $Session.Native.ExpectsWindow -ne $false
             & $Session.Dependencies.CloseNative $Session.Native
             $Session.Native = $null
 
-            if ($Session.Phase -eq 'Streaming') {
+            $completedSession = $Session.Phase -eq 'Streaming' -or (-not $expectsWindow -and $exitCode -eq 0)
+
+            if ($completedSession) {
                 $Session.Phase = 'Closing'
                 return
             }
 
-            Set-LaunchFailure -Session $Session -Message 'The screen could not open. Open logs for details, then retry.'
+            Set-LaunchFailure -Session $Session -Message 'The session stopped unexpectedly. Open logs for details, then retry.'
+            return
+        }
+
+        if ($Session.Native.ExpectsWindow -eq $false) {
+            $Session.Phase = 'Running'
+            $Session.Presentation.Visible = $true
+            $Session.Presentation.Status = 'scrcpy is running without a window.'
+            $Session.Presentation.Hint = 'Close this window to stop the session. Open logs for connection and recording details.'
             return
         }
 

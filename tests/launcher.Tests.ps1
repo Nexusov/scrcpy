@@ -88,6 +88,13 @@ public static class FakeDeviceTool {
     $wirelessOnly = Complete-WirelessPairing -RootDirectory $temporaryDirectory -PairingCode 123456
     Assert-Condition ($wirelessOnly.UsbSerial -eq 'TEST123') 'Wi-Fi-only setup did not read the phone identity.'
     Assert-Condition ($wirelessOnly.WirelessService -eq $legacy.WirelessService) 'Wi-Fi-only setup lost the discovered service.'
+    Set-Content (Join-Path $temporaryDirectory 'services.txt') 'adb-TEST123-paired _adb-tls-connect._tcp. 192.168.1.2:5000'
+    $rootedService = @(Get-PhoneWirelessServices -RootDirectory $temporaryDirectory -UsbSerial TEST123)[0]
+    Assert-Condition ($rootedService.TransportName -eq 'adb-TEST123-paired._adb-tls-connect._tcp.') 'Discovery lost the ADB transport root dot.'
+    . (Join-Path $repository 'launcher/connection-core.ps1')
+    $currentTarget = Get-CurrentWirelessTarget -RootDirectory $temporaryDirectory -Configuration $legacy
+    Assert-Condition ($currentTarget -eq $rootedService.TransportName) 'Connection changed the advertised transport identifier.'
+    Set-Content (Join-Path $temporaryDirectory 'services.txt') "adb-TEST123-pair _adb-tls-pairing._tcp 192.168.1.2:4000`nadb-TEST123-paired _adb-tls-connect._tcp 192.168.1.2:5000"
     Assert-RejectedPairing @{ PairingCode = '123456'; Endpoint = '192.168.1.2:4000'; ConnectionEndpoint = '192.168.1.2:4000' }
     Set-Content (Join-Path $temporaryDirectory 'identity.txt') 'OTHER'
     Assert-RejectedPairing @{ UsbSerial = 'TEST123'; PairingCode = '123456' }

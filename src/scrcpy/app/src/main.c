@@ -16,6 +16,7 @@
 #endif
 #include "util/log.h"
 #include "util/net.h"
+#include "util/launcher_stop.h"
 #include "version.h"
 
 #ifdef _WIN32
@@ -89,12 +90,28 @@ main_scrcpy(int argc, char *argv[]) {
         goto net_cleanup;
     }
 
+    if (!SDL_Init(SDL_INIT_EVENTS)) {
+        LOGE("Could not initialize SDL events: %s", SDL_GetError());
+        ret = SCRCPY_EXIT_FAILURE;
+        goto main_thread_cleanup;
+    }
+    atexit(SDL_Quit);
+
+    struct sc_launcher_stop launcher_stop;
+    if (!sc_launcher_stop_init(&launcher_stop)) {
+        ret = SCRCPY_EXIT_FAILURE;
+        goto main_thread_cleanup;
+    }
+
 #ifdef HAVE_USB
     ret = args.opts.otg ? scrcpy_otg(&args.opts) : scrcpy(&args.opts);
 #else
     ret = scrcpy(&args.opts);
 #endif
 
+    sc_launcher_stop_destroy(&launcher_stop);
+
+main_thread_cleanup:
     sc_main_thread_destroy();
 
 net_cleanup:

@@ -16,7 +16,7 @@ $script:connectionReady = $false
 function Get-AdbServices { param($RootDirectory, $ServiceType)
 
     if ($script:connectionReady) {
-        return [pscustomobject]@{ Name = 'adb-phone123-test'; Endpoint = '192.168.1.8:40001' }
+        return [pscustomobject]@{ Name = 'adb-phone123-test'; Endpoint = '192.168.1.8:40001'; TransportName = 'adb-phone123-test.' + $ServiceType }
     }
     return @()
 }
